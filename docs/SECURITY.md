@@ -1,13 +1,13 @@
-# NanoClaw Security Model
+# BDRClaw Security Model
 
 ## Trust Model
 
 | Entity | Trust Level | Rationale |
 |--------|-------------|-----------|
-| Main group | Trusted | Private self-chat, admin control |
-| Non-main groups | Untrusted | Other users may be malicious |
-| Container agents | Sandboxed | Isolated execution environment |
-| WhatsApp messages | User input | Potential prompt injection |
+| Main channel | Trusted | Private self-chat, admin control |
+| Prospect containers | Sandboxed | Per-prospect isolated execution |
+| Channel skills | Sandboxed | Separate containers, separate credential mounts |
+| Inbound messages | User input | Potential prompt injection |
 
 ## Security Boundaries
 
@@ -21,9 +21,26 @@ Agents execute in containers (lightweight Linux VMs), providing:
 
 This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
 
-### 2. Mount Security
+### 2. Per-Prospect Isolation
 
-**External Allowlist** - Mount permissions stored at `~/.config/nanoclaw/mount-allowlist.json`, which is:
+Each prospect gets their own container sandbox. The agent handling Acme Corp cannot see data from Widget Co.
+
+- Prospect memory files (`prospects/{id}/CLAUDE.md`) are mounted individually
+- No cross-prospect filesystem access
+- Separate container invocations per prospect
+- Touchpoint history is prospect-scoped in SQLite
+
+### 3. Per-Skill Credential Isolation
+
+A compromised LinkedIn skill cannot access your Gmail credentials — they're in separate containers with separate mounts.
+
+- Each channel skill runs with only its own credentials
+- API keys are injected per-skill, not globally
+- Skills cannot enumerate other skills' credentials
+
+### 4. Mount Security
+
+**External Allowlist** - Mount permissions stored at `~/.config/bdrclaw/mount-allowlist.json`, which is:
 - Outside project root
 - Never mounted into containers
 - Cannot be modified by agents
@@ -42,20 +59,20 @@ private_key, .secret
 
 **Read-Only Project Root:**
 
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
+The main group's project root is mounted read-only. Writable paths the agent needs (prospect folders, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
 
-### 3. Session Isolation
+### 5. Session Isolation
 
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
-- Groups cannot see other groups' conversation history
+Each prospect has isolated Claude sessions at `data/sessions/{prospect}/.claude/`:
+- Prospects cannot see other prospects' conversation history
 - Session data includes full message history and file contents read
-- Prevents cross-group information disclosure
+- Prevents cross-prospect information disclosure
 
-### 4. IPC Authorization
+### 6. IPC Authorization
 
 Messages and task operations are verified against group identity:
 
-| Operation | Main Group | Non-Main Group |
+| Operation | Main Channel | Non-Main Channel |
 |-----------|------------|----------------|
 | Send message to own chat | ✓ | ✓ |
 | Send message to other chats | ✓ | ✗ |
@@ -64,7 +81,7 @@ Messages and task operations are verified against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
-### 5. Credential Isolation (Credential Proxy)
+### 7. Credential Isolation (Credential Proxy)
 
 Real API credentials **never enter containers**. Instead, the host runs an HTTP credential proxy that injects authentication headers transparently.
 
@@ -76,17 +93,17 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 5. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
 
 **NOT Mounted:**
-- WhatsApp session (`store/auth/`) - host only
-- Mount allowlist - external, never mounted
+- Channel auth sessions — host only
+- Mount allowlist — external, never mounted
 - Any credentials matching blocked patterns
 - `.env` is shadowed with `/dev/null` in the project root mount
 
 ## Privilege Comparison
 
-| Capability | Main Group | Non-Main Group |
+| Capability | Main Channel | Non-Main Channel |
 |------------|------------|----------------|
 | Project root access | `/workspace/project` (ro) | None |
-| Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
+| Prospect folder | `/workspace/prospect` (rw) | `/workspace/prospect` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
@@ -97,7 +114,8 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        UNTRUSTED ZONE                             │
-│  WhatsApp Messages (potentially malicious)                        │
+│  Inbound Messages (potentially malicious)                         │
+│  Prospect Replies (any channel)                                   │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │
                                  ▼ Trigger check, input escaping
@@ -108,15 +126,17 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 │  • Mount validation (external allowlist)                          │
 │  • Container lifecycle                                            │
 │  • Credential proxy (injects auth headers)                       │
+│  • BDR Brain scheduler                                            │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │
                                  ▼ Explicit mounts only, no secrets
 ┌──────────────────────────────────────────────────────────────────┐
 │                CONTAINER (ISOLATED/SANDBOXED)                     │
-│  • Agent execution                                                │
+│  • Agent execution (per-prospect)                                 │
 │  • Bash commands (sandboxed)                                      │
 │  • File operations (limited to mounts)                            │
 │  • API calls routed through credential proxy                     │
 │  • No real credentials in environment or filesystem              │
+│  • Channel skills in separate containers                          │
 └──────────────────────────────────────────────────────────────────┘
 ```

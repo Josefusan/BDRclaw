@@ -1,210 +1,357 @@
-<p align="center">
-  <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
-</p>
+# BDRClaw
 
-<p align="center">
-  An AI assistant that runs agents securely in their own containers. Lightweight, built to be easily understood and completely customized for your needs.
-</p>
-
-<p align="center">
-  <a href="https://nanoclaw.dev">nanoclaw.dev</a>&nbsp; • &nbsp;
-  <a href="README_zh.md">中文</a>&nbsp; • &nbsp;
-  <a href="README_ja.md">日本語</a>&nbsp; • &nbsp;
-  <a href="https://discord.gg/VDdww8qS42"><img src="https://img.shields.io/discord/1470188214710046894?label=Discord&logo=discord&v=2" alt="Discord" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="repo-tokens"><img src="repo-tokens/badge.svg" alt="34.9k tokens, 17% of context window" valign="middle"></a>
-</p>
+> **A lightweight, container-isolated AI sales development platform built on Anthropic's Agent SDK.**
+> Automates prospecting, outreach, follow-up, and CRM hygiene across every channel — LinkedIn, email, SMS, Slack, WhatsApp, Telegram, and Discord — so your team closes deals instead of filling spreadsheets.
 
 ---
 
-## Why I Built NanoClaw
+## Vision
 
-[OpenClaw](https://github.com/openclaw/openclaw) is an impressive project, but I wouldn't have been able to sleep if I had given complex software I didn't understand full access to my life. OpenClaw has nearly half a million lines of code, 53 config files, and 70+ dependencies. Its security is at the application level (allowlists, pairing codes) rather than true OS-level isolation. Everything runs in one Node process with shared memory.
+BDRClaw is what happens when you give a world-class BDR an AI brain, a memory system, and access to every sales tool in your stack — running securely in its own container so it can't go rogue, can't leak data, and can be audited line by line.
 
-NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Claude agents run in their own Linux containers with filesystem isolation, not merely behind permission checks.
+Built as an **open-core fork of NanoClaw**, BDRClaw keeps the same philosophy:
 
-## Quick Start
+- **Small enough to understand.** One process, a handful of source files, no microservices.
+- **Secure by isolation.** Agents run in Linux containers (Docker / Apple Container). Bash is safe because it runs inside the container, not on your host.
+- **AI-native.** No setup wizard. No monitoring dashboard. No debugging tools. Ask Claude.
+- **Skills over features.** New integrations ship as installable skills (`/add-hubspot`, `/add-linkedin`, `/add-apollo`), not as bloat in the core.
 
-```bash
-gh repo fork qwibitai/nanoclaw --clone
-cd nanoclaw
-claude
-```
+The base framework is MIT. Premium skills are the moat.
 
-<details>
-<summary>Without GitHub CLI</summary>
+---
 
-1. Fork [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) on GitHub (click the Fork button)
-2. `git clone https://github.com/<your-username>/nanoclaw.git`
-3. `cd nanoclaw`
-4. `claude`
+## What BDRClaw Automates
 
-</details>
+Everything a BDR does except getting on a call:
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup and service configuration.
+| Activity | Channel | Skill |
+|---|---|---|
+| Cold outreach sequences | Gmail / SMTP | `/add-gmail` |
+| LinkedIn DMs + connection requests | LinkedIn | `/add-linkedin` |
+| SMS follow-ups | Twilio | `/add-sms` |
+| Slack prospecting | Slack | `/add-slack-outreach` |
+| WhatsApp sequences | WhatsApp | `/add-whatsapp` |
+| Telegram outreach | Telegram | `/add-telegram` |
+| Contact enrichment | Apollo / Hunter / Clearbit | `/add-apollo` |
+| CRM hygiene + deal stage updates | HubSpot / Attio / Salesforce | `/add-hubspot` |
+| Pipeline review + follow-up queue | Internal scheduler | Built-in |
+| Lead scoring + prioritization | Claude reasoning layer | Built-in |
+| Meeting booking | Cal.com / Calendly | `/add-cal` |
 
-> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are [Claude Code skills](https://code.claude.com/docs/en/skills). Type them inside the `claude` CLI prompt, not in your regular terminal. If you don't have Claude Code installed, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
-
-## Philosophy
-
-**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Claude Code to walk you through it.
-
-**Secure by isolation.** Agents run in Linux containers (Apple Container on macOS, or Docker) and they can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
-
-**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Claude Code modify it to match your needs.
-
-**Customization = code changes.** No configuration sprawl. Want different behavior? Modify the code. The codebase is small enough that it's safe to make changes.
-
-**AI-native.**
-- No installation wizard; Claude Code guides setup.
-- No monitoring dashboard; ask Claude what's happening.
-- No debugging tools; describe the problem and Claude fixes it.
-
-**Skills over features.** Instead of adding features (e.g. support for Telegram) to the codebase, contributors submit [claude code skills](https://code.claude.com/docs/en/skills) like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
-
-**Best harness, best model.** NanoClaw runs on the Claude Agent SDK, which means you're running Claude Code directly. Claude Code is highly capable and its coding and problem-solving capabilities allow it to modify and expand NanoClaw and tailor it to each user.
-
-## What It Supports
-
-- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
-- **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
-- **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
-- **Scheduled tasks** - Recurring jobs that run Claude and can message you back
-- **Web access** - Search and fetch content from the Web
-- **Container isolation** - Agents are sandboxed in Docker (macOS/Linux), [Docker Sandboxes](docs/docker-sandboxes.md) (micro VM isolation), or Apple Container (macOS)
-- **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
-- **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
-
-## Usage
-
-Talk to your assistant with the trigger word (default: `@Andy`):
-
-```
-@Andy send an overview of the sales pipeline every weekday morning at 9am (has access to my Obsidian vault folder)
-@Andy review the git history for the past week each Friday and update the README if there's drift
-@Andy every Monday at 8am, compile news on AI developments from Hacker News and TechCrunch and message me a briefing
-```
-
-From the main channel (your self-chat), you can manage groups and tasks:
-```
-@Andy list all scheduled tasks across groups
-@Andy pause the Monday briefing task
-@Andy join the Family Chat group
-```
-
-## Customizing
-
-NanoClaw doesn't use configuration files. To make changes, just tell Claude Code what you want:
-
-- "Change the trigger word to @Bob"
-- "Remember in the future to make responses shorter and more direct"
-- "Add a custom greeting when I say good morning"
-- "Store conversation summaries weekly"
-
-Or run `/customize` for guided changes.
-
-The codebase is small enough that Claude can safely modify it.
-
-## Contributing
-
-**Don't add features. Add skills.**
-
-If you want to add Telegram support, don't create a PR that adds Telegram to the core codebase. Instead, fork NanoClaw, make the code changes on a branch, and open a PR. We'll create a `skill/telegram` branch from your PR that other users can merge into their fork.
-
-Users then run `/add-telegram` on their fork and get clean code that does exactly what they need, not a bloated system trying to support every use case.
-
-### RFS (Request for Skills)
-
-Skills we'd like to see:
-
-**Communication Channels**
-- `/add-signal` - Add Signal as a channel
-
-## Requirements
-
-- macOS or Linux
-- Node.js 20+
-- [Claude Code](https://claude.ai/download)
-- [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
+---
 
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+Channels (Gmail, LinkedIn, SMS, Slack...)
+        |
+        v
+    SQLite DB
+        |
+        v
+   Polling Loop
+        |
+        v
+  BDR Brain Agent  <----  prospects/*/CLAUDE.md (per-prospect memory)
+        |
+        v
+  Container (Claude Agent SDK)
+        |
+        v
+   Outbound Router  -->  Channel Registry  -->  Response
 ```
 
-Single Node.js process. Channels are added via skills and self-register at startup — the orchestrator connects whichever ones have credentials present. Agents execute in isolated Linux containers with filesystem isolation. Only mounted directories are accessible. Per-group message queue with concurrency control. IPC via filesystem.
+### Core Components
 
-For the full architecture details, see [docs/SPEC.md](docs/SPEC.md).
+| File | Role |
+|---|---|
+| `src/index.ts` | Orchestrator: state, message loop, agent invocation |
+| `src/channels/registry.ts` | Channel self-registration at startup |
+| `src/ipc.ts` | IPC watcher and task processing |
+| `src/router.ts` | Message formatting and outbound routing |
+| `src/group-queue.ts` | Per-prospect queue with global concurrency limit |
+| `src/container-runner.ts` | Spawns streaming agent containers |
+| `src/task-scheduler.ts` | Runs scheduled BDR tasks (daily pipeline review, follow-up triggers) |
+| `src/db.ts` | SQLite operations (prospects, touchpoints, sequences, CRM state) |
+| `prospects/*/CLAUDE.md` | Per-prospect memory: last touchpoint, stage, notes, response history |
 
-Key files:
-- `src/index.ts` - Orchestrator: state, message loop, agent invocation
-- `src/channels/registry.ts` - Channel registry (self-registration at startup)
-- `src/ipc.ts` - IPC watcher and task processing
-- `src/router.ts` - Message formatting and outbound routing
-- `src/group-queue.ts` - Per-group queue with global concurrency limit
-- `src/container-runner.ts` - Spawns streaming agent containers
-- `src/task-scheduler.ts` - Runs scheduled tasks
-- `src/db.ts` - SQLite operations (messages, groups, sessions, state)
-- `groups/*/CLAUDE.md` - Per-group memory
+### Key Architectural Decisions
 
-## FAQ
+**Per-prospect isolation.** Each prospect gets their own `CLAUDE.md` memory file, isolated filesystem context, and runs in its own container sandbox. The agent that handles Acme Corp cannot see data from Widget Co.
 
-**Why Docker?**
+**Skill branches.** Integrations ship as Git branches, not PRs to main. Users run `/add-hubspot` and get clean code that does exactly what they need — not a system trying to support every CRM at once.
 
-Docker provides cross-platform support (macOS, Linux and even Windows via WSL2) and a mature ecosystem. On macOS, you can optionally switch to Apple Container via `/convert-to-apple-container` for a lighter-weight native runtime. For additional isolation, [Docker Sandboxes](docs/docker-sandboxes.md) run each container inside a micro VM.
+**BDR Brain scheduler.** A master scheduled agent runs on a configurable cadence (default: daily at 7am) and:
+- Reviews the full pipeline
+- Scores and prioritizes leads
+- Queues follow-up actions across channels
+- Flags hot leads for human review
+- Triggers next steps in active sequences
 
-**Can I run this on Linux?**
+---
 
-Yes. Docker is the default runtime and works on both macOS and Linux. Just run `/setup`.
+## Prospect Data Model
 
-**Is this secure?**
+Each prospect lives at `prospects/{id}/CLAUDE.md` and contains:
 
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running, but the codebase is small enough that you actually can. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
+```markdown
+# Prospect: {Full Name}
 
-**Why no configuration files?**
+## Identity
+- Company: 
+- Title: 
+- LinkedIn: 
+- Email: 
+- Phone: 
 
-We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Claude to add them.
+## Pipeline Stage
+- Stage: [new | contacted | engaged | qualified | meeting_set | closed_lost]
+- Lead Score: /10
+- Last Updated: 
 
-**Can I use third-party or open-source models?**
+## Touchpoint History
+| Date | Channel | Message Summary | Response |
+|------|---------|----------------|----------|
 
-Yes. NanoClaw supports any Claude API-compatible model endpoint. Set these environment variables in your `.env` file:
+## Notes
+- 
+
+## Next Action
+- Action: 
+- Channel: 
+- Scheduled: 
+```
+
+---
+
+## Sequence Engine
+
+BDRClaw sequences are defined in `sequences/*.md` and executed by the scheduler:
+
+```markdown
+# Sequence: Cold Outreach v1
+
+## Steps
+1. Day 0  — LinkedIn connection request (personalized note)
+2. Day 2  — LinkedIn DM (value-first, no pitch)
+3. Day 5  — Cold email (problem + social proof)
+4. Day 8  — Email follow-up #1 (short, bump)
+5. Day 12 — Email follow-up #2 (breakup email)
+6. Day 15 — SMS (if phone available)
+
+## Exit Conditions
+- Reply on any channel → move to [engaged], notify human
+- Meeting booked → move to [meeting_set]
+- Unsubscribe / negative reply → move to [closed_lost], halt sequence
+```
+
+The agent reads the sequence, checks the prospect's touchpoint history, and executes only the next appropriate step — never double-sending across channels.
+
+---
+
+## Open Core Model
+
+### What's Free (MIT)
+
+- Core orchestrator + container runner
+- SQLite message/prospect/sequence storage
+- Polling loop + task scheduler
+- BDR Brain agent logic
+- Prospect memory system (`prospects/*/CLAUDE.md`)
+- Base skills: `/add-gmail`, `/add-telegram`, `/add-whatsapp`, `/add-slack`
+
+### What's Paid (BDRClaw Pro Skills)
+
+- `/add-linkedin` — LinkedIn DM + connection automation
+- `/add-apollo` — Contact enrichment + lead import
+- `/add-hubspot` — Full CRM sync (deals, contacts, activities)
+- `/add-salesforce` — Salesforce integration
+- `/add-attio` — Attio CRM sync
+- `/add-sms` — Twilio SMS sequences
+- `/add-cal` — Cal.com / Calendly booking automation
+- `/add-clearbit` — Company enrichment
+- `sequences/` — Premium sequence library
+- BDR Brain Pro — Advanced lead scoring, A/B sequence testing, reply classification
+
+---
+
+## Skills Taxonomy
+
+Skills follow the NanoClaw pattern: each skill is a branch containing a `SKILL.md` that Claude Code uses to transform your fork.
+
+```
+skills/
+  core/
+    add-gmail/         SKILL.md
+    add-telegram/      SKILL.md
+    add-whatsapp/      SKILL.md
+    add-slack/         SKILL.md
+  pro/
+    add-linkedin/      SKILL.md
+    add-hubspot/       SKILL.md
+    add-apollo/        SKILL.md
+    add-sms/           SKILL.md
+    add-cal/           SKILL.md
+```
+
+### Skill Interface Contract
+
+Every skill must:
+1. Self-register in `src/channels/registry.ts` at startup if credentials are present
+2. Export a `send(prospectId, message)` function
+3. Export a `receive()` polling function
+4. Write all events to SQLite via `src/db.ts`
+5. Update `prospects/{id}/CLAUDE.md` after every touchpoint
+
+---
+
+## BDR Brain Agent
+
+The heart of BDRClaw. Runs on a schedule and acts as the strategic layer:
+
+```
+System Prompt (abbreviated):
+
+You are a world-class BDR. You have access to the full prospect database,
+all active sequences, and every communication channel. Your job is to:
+
+1. Review all prospects in the pipeline
+2. Score each lead 1-10 based on engagement signals
+3. Identify who needs a follow-up today and on which channel
+4. Draft the next message for each prospect (do not send — queue for review unless auto-send is enabled)
+5. Flag any hot leads (replied, opened 3+ times, visited pricing page)
+6. Update each prospect's CLAUDE.md with your assessment
+7. Generate a daily pipeline summary and send to the main channel
+
+Never send the same message twice. Never contact a prospect who has unsubscribed.
+Always personalize based on the prospect's CLAUDE.md history.
+```
+
+---
+
+## Setup
 
 ```bash
-ANTHROPIC_BASE_URL=https://your-api-endpoint.com
-ANTHROPIC_AUTH_TOKEN=your-token-here
+gh repo fork josephclark/bdrclaw --clone
+cd bdrclaw
+claude
 ```
 
-This allows you to use:
-- Local models via [Ollama](https://ollama.ai) with an API proxy
-- Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
-- Custom model deployments with Anthropic-compatible APIs
+Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup, and service configuration.
 
-Note: The model must support the Anthropic API format for best compatibility.
+### Requirements
 
-**How do I debug issues?**
+- macOS or Linux
+- Node.js 22+
+- Claude Code
+- Docker (macOS/Linux) or Apple Container (macOS)
+- Anthropic API key
 
-Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
+### Environment Variables
 
-**Why isn't the setup working for me?**
+```env
+ANTHROPIC_API_KEY=
+DATABASE_URL=./data/bdrclaw.db
+TRIGGER_WORD=@BDR
+MAIN_CHANNEL=telegram          # your admin channel
+AUTO_SEND=false                # true = agent sends without review
+DAILY_BRAIN_RUN=07:00          # when BDR Brain runs each day
+```
 
-If you have issues, during setup, Claude will try to dynamically fix them. If that doesn't work, run `claude`, then run `/debug`. If Claude finds an issue that is likely affecting other users, open a PR to modify the setup SKILL.md.
+---
 
-**What changes will be accepted into the codebase?**
+## Usage
 
-Only security fixes, bug fixes, and clear improvements will be accepted to the base configuration. That's all.
+From your main channel (Telegram / WhatsApp / Slack self-chat):
 
-Everything else (new capabilities, OS compatibility, hardware support, enhancements) should be contributed as skills.
+```
+@BDR add prospect: Sarah Chen, VP Eng at Acme Corp, sarah@acme.com, linkedin.com/in/sarahchen
+@BDR enroll Sarah Chen in Cold Outreach v1 sequence
+@BDR what's the pipeline looking like this week
+@BDR who are our hottest leads right now
+@BDR pause all outreach to Acme Corp
+@BDR generate a pipeline report and send it to the team Slack
+@BDR mark Sarah Chen as qualified, she replied and wants a call Thursday
+```
 
-This keeps the base system minimal and lets every user customize their installation without inheriting features they don't want.
+---
 
-## Community
+## Roadmap
 
-Questions? Ideas? [Join the Discord](https://discord.gg/VDdww8qS42).
+### v0.1 — Foundation
+- [ ] Fork NanoClaw, rebrand to BDRClaw
+- [ ] Prospect data model + `prospects/*/CLAUDE.md` system
+- [ ] Sequence engine (step runner, exit conditions, multi-channel dedup)
+- [ ] BDR Brain scheduler (daily pipeline review)
+- [ ] Core skills: Gmail, Telegram, Slack
 
-## Changelog
+### v0.2 — Outreach
+- [ ] `/add-linkedin` skill (Pro)
+- [ ] `/add-sms` skill via Twilio (Pro)
+- [ ] `/add-apollo` for contact enrichment (Pro)
+- [ ] Reply classification (interested / not interested / unsubscribe / out of office)
 
-See [CHANGELOG.md](CHANGELOG.md) for breaking changes and migration notes.
+### v0.3 — CRM Layer
+- [ ] `/add-hubspot` full sync (Pro)
+- [ ] `/add-attio` sync (Pro)
+- [ ] Deal stage auto-update from agent signals
+- [ ] Meeting booked detection + Calendly/Cal.com hook
+
+### v0.4 — Intelligence
+- [ ] Lead scoring model (engagement signals, company fit, timing)
+- [ ] A/B sequence testing
+- [ ] Reply quality scoring
+- [ ] Pipeline forecasting via BDR Brain
+
+### v1.0 — Public Launch
+- [ ] Website: bdrclaw.dev
+- [ ] Pro skills marketplace
+- [ ] Discord community
+- [ ] Hosted option (no self-hosting required)
+
+---
+
+## Contributing
+
+Same philosophy as NanoClaw: **don't add features, add skills.**
+
+If you want to add Salesforce support, don't open a PR that adds Salesforce to the core. Fork BDRClaw, build the skill on a branch, and open a PR. We'll create a `skills/add-salesforce` branch others can install.
+
+### What Gets Merged to Core
+- Security fixes
+- Bug fixes
+- Clear improvements to the base orchestrator
+
+### What Ships as a Skill
+- New channel integrations
+- CRM connectors
+- Enrichment providers
+- Sequence templates
+- OS/platform compatibility
+
+---
+
+## Security
+
+Agents run in containers, not behind application-level permission checks. A compromised LinkedIn skill cannot access your Gmail credentials — they're in separate containers with separate mounts.
+
+See `docs/SECURITY.md` for the full model.
+
+---
 
 ## License
 
-MIT
+Core: MIT
+Pro Skills: Commercial (see `LICENSE_PRO`)
+
+---
+
+## Built On
+
+- [NanoClaw](https://github.com/qwibitai/nanoclaw) — the foundation
+- [Anthropic Agent SDK](https://docs.anthropic.com) — the brain
+- [Claude Code](https://claude.ai/code) — the builder
+
+---
+
+*BDRClaw is built by [Clark Tech Ventures LLC](https://clarktechventures.com). If you're using it to close deals, we'd love to hear about it.*

@@ -1,8 +1,15 @@
 # Changelog
 
-All notable changes to NanoClaw will be documented in this file.
+All notable changes to BDRClaw will be documented in this file.
 
-## [1.2.0](https://github.com/qwibitai/nanoclaw/compare/v1.1.6...v1.2.0)
+## [0.1.0] — Foundation
 
-[BREAKING] WhatsApp removed from core, now a skill. Run `/add-whatsapp` to re-add (existing auth/groups preserved).
-- **fix:** Prevent scheduled tasks from executing twice when container runtime exceeds poll interval (#138, #669)
+Initial release. Fork of NanoClaw rebranded and repurposed for AI sales development.
+
+- Prospect data model + `prospects/*/CLAUDE.md` system
+- Sequence engine (step runner, exit conditions, multi-channel dedup)
+- BDR Brain scheduler (daily pipeline review)
+- Open-core model (MIT base + commercial Pro skills)
+- Core skills: Gmail, Telegram, WhatsApp, Slack
+- Per-prospect container isolation
+- Multi-channel outreach routing
