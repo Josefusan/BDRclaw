@@ -1,357 +1,221 @@
-# BDRClaw
+# BDRclaw
 
-> **A lightweight, container-isolated AI sales development platform built on Anthropic's Agent SDK.**
-> Automates prospecting, outreach, follow-up, and CRM hygiene across every channel — LinkedIn, email, SMS, Slack, WhatsApp, Telegram, and Discord — so your team closes deals instead of filling spreadsheets.
+> **The AI SDR team that never sleeps — books qualified meetings while you close deals.**
 
----
+A lightweight AI-native BDR team that runs in containers. Connects to your CRM, email, LinkedIn, Slack, and SMS so you can focus on closing without burning cognitive load.
 
-## Vision
-
-BDRClaw is what happens when you give a world-class BDR an AI brain, a memory system, and access to every sales tool in your stack — running securely in its own container so it can't go rogue, can't leak data, and can be audited line by line.
-
-Built as an **open-core fork of NanoClaw**, BDRClaw keeps the same philosophy:
-
-- **Small enough to understand.** One process, a handful of source files, no microservices.
-- **Secure by isolation.** Agents run in Linux containers (Docker / Apple Container). Bash is safe because it runs inside the container, not on your host.
-- **AI-native.** No setup wizard. No monitoring dashboard. No debugging tools. Ask Claude.
-- **Skills over features.** New integrations ship as installable skills (`/add-hubspot`, `/add-linkedin`, `/add-apollo`), not as bloat in the core.
-
-The base framework is MIT. Premium skills are the moat.
+Built on the [Anthropic Agents SDK](https://docs.anthropic.com/en/docs/agents). Inspired by [NanoClaw](https://github.com/qwibitai/nanoclaw).
 
 ---
 
-## What BDRClaw Automates
+## Why BDRclaw
 
-Everything a BDR does except getting on a call:
+Most sales automation tools are dashboards. You still have to think, decide, and execute. BDRclaw is different — it's an agent team. It prospects, sequences, follows up, enriches, and syncs your CRM automatically, across every channel your buyers live on.
 
-| Activity | Channel | Skill |
-|---|---|---|
-| Cold outreach sequences | Gmail / SMTP | `/add-gmail` |
-| LinkedIn DMs + connection requests | LinkedIn | `/add-linkedin` |
-| SMS follow-ups | Twilio | `/add-sms` |
-| Slack prospecting | Slack | `/add-slack-outreach` |
-| WhatsApp sequences | WhatsApp | `/add-whatsapp` |
-| Telegram outreach | Telegram | `/add-telegram` |
-| Contact enrichment | Apollo / Hunter / Clearbit | `/add-apollo` |
-| CRM hygiene + deal stage updates | HubSpot / Attio / Salesforce | `/add-hubspot` |
-| Pipeline review + follow-up queue | Internal scheduler | Built-in |
-| Lead scoring + prioritization | Claude reasoning layer | Built-in |
-| Meeting booking | Cal.com / Calendly | `/add-cal` |
+No SDR hire. No burned cognitive load. Just qualified pipeline.
+
+| What BDRclaw does | What you do |
+|---|---|
+| Prospect on LinkedIn | Run discovery calls |
+| Send cold email sequences | Handle objections |
+| Follow up via SMS & Slack | Negotiate and close |
+| Enrich and update CRM records | Sign contracts |
+| Flag hot leads and buying signals | Collect payment |
 
 ---
 
 ## Architecture
 
 ```
-Channels (Gmail, LinkedIn, SMS, Slack...)
-        |
-        v
-    SQLite DB
-        |
-        v
-   Polling Loop
-        |
-        v
-  BDR Brain Agent  <----  prospects/*/CLAUDE.md (per-prospect memory)
-        |
-        v
-  Container (Claude Agent SDK)
-        |
-        v
-   Outbound Router  -->  Channel Registry  -->  Response
+Channels (Email / LinkedIn / Slack / SMS / WhatsApp)
+        ↓
+    SQLite queue
+        ↓
+  Polling loop + router
+        ↓
+  Container (Claude Agent SDK)  ←→  prospects/*/CLAUDE.md
+        ↓
+   CRM sync + outbound actions
 ```
 
-### Core Components
-
-| File | Role |
-|---|---|
-| `src/index.ts` | Orchestrator: state, message loop, agent invocation |
-| `src/channels/registry.ts` | Channel self-registration at startup |
-| `src/ipc.ts` | IPC watcher and task processing |
-| `src/router.ts` | Message formatting and outbound routing |
-| `src/group-queue.ts` | Per-prospect queue with global concurrency limit |
-| `src/container-runner.ts` | Spawns streaming agent containers |
-| `src/task-scheduler.ts` | Runs scheduled BDR tasks (daily pipeline review, follow-up triggers) |
-| `src/db.ts` | SQLite operations (prospects, touchpoints, sequences, CRM state) |
-| `prospects/*/CLAUDE.md` | Per-prospect memory: last touchpoint, stage, notes, response history |
-
-### Key Architectural Decisions
-
-**Per-prospect isolation.** Each prospect gets their own `CLAUDE.md` memory file, isolated filesystem context, and runs in its own container sandbox. The agent that handles Acme Corp cannot see data from Widget Co.
-
-**Skill branches.** Integrations ship as Git branches, not PRs to main. Users run `/add-hubspot` and get clean code that does exactly what they need — not a system trying to support every CRM at once.
-
-**BDR Brain scheduler.** A master scheduled agent runs on a configurable cadence (default: daily at 7am) and:
-- Reviews the full pipeline
-- Scores and prioritizes leads
-- Queues follow-up actions across channels
-- Flags hot leads for human review
-- Triggers next steps in active sequences
+- **One Node.js process.** No microservices, no orchestration hell.
+- **Container-isolated agents.** Each agent runs in its own Linux container (Docker or Apple Container). Bash access is safe because commands run inside the container, not on your host.
+- **Prospect memory.** Each prospect gets a `prospects/*/CLAUDE.md` — last touchpoint, stage, reply history, enrichment data.
+- **Skills over features.** Capabilities are added as Claude Code skills (`/add-linkedin`, `/add-hubspot`) — you get clean code that does exactly what you need, not a bloated system.
 
 ---
 
-## Prospect Data Model
+## What It Automates
 
-Each prospect lives at `prospects/{id}/CLAUDE.md` and contains:
+### Outbound Channels
+- **Email** — Multi-step cold sequences, follow-ups, reply detection
+- **LinkedIn** — Connection requests, DM sequences, profile enrichment
+- **SMS** — Twilio-powered text outreach
+- **Slack** — SDR sequences via Slack Connect
+- **WhatsApp** — Warm outreach for international prospects
 
-```markdown
-# Prospect: {Full Name}
+### CRM & Enrichment
+- **HubSpot / Attio / Salesforce** — Auto-create contacts, log touches, update stages
+- **Apollo / Hunter / Clay** — Email finding and contact enrichment
+- **LinkedIn Sales Navigator** — Signal-based prospecting
 
-## Identity
-- Company: 
-- Title: 
-- LinkedIn: 
-- Email: 
-- Phone: 
-
-## Pipeline Stage
-- Stage: [new | contacted | engaged | qualified | meeting_set | closed_lost]
-- Lead Score: /10
-- Last Updated: 
-
-## Touchpoint History
-| Date | Channel | Message Summary | Response |
-|------|---------|----------------|----------|
-
-## Notes
-- 
-
-## Next Action
-- Action: 
-- Channel: 
-- Scheduled: 
-```
+### Intelligence Layer
+- Daily BDR brain: reviews pipeline, queues follow-ups, flags hot leads
+- Buying signal detection (job changes, funding rounds, website visits)
+- Reply classification (interested / not interested / referral / unsubscribe)
+- Meeting booked → CRM stage auto-update → notify closer
 
 ---
 
-## Sequence Engine
-
-BDRClaw sequences are defined in `sequences/*.md` and executed by the scheduler:
-
-```markdown
-# Sequence: Cold Outreach v1
-
-## Steps
-1. Day 0  — LinkedIn connection request (personalized note)
-2. Day 2  — LinkedIn DM (value-first, no pitch)
-3. Day 5  — Cold email (problem + social proof)
-4. Day 8  — Email follow-up #1 (short, bump)
-5. Day 12 — Email follow-up #2 (breakup email)
-6. Day 15 — SMS (if phone available)
-
-## Exit Conditions
-- Reply on any channel → move to [engaged], notify human
-- Meeting booked → move to [meeting_set]
-- Unsubscribe / negative reply → move to [closed_lost], halt sequence
-```
-
-The agent reads the sequence, checks the prospect's touchpoint history, and executes only the next appropriate step — never double-sending across channels.
-
----
-
-## Open Core Model
-
-### What's Free (MIT)
-
-- Core orchestrator + container runner
-- SQLite message/prospect/sequence storage
-- Polling loop + task scheduler
-- BDR Brain agent logic
-- Prospect memory system (`prospects/*/CLAUDE.md`)
-- Base skills: `/add-gmail`, `/add-telegram`, `/add-whatsapp`, `/add-slack`
-
-### What's Paid (BDRClaw Pro Skills)
-
-- `/add-linkedin` — LinkedIn DM + connection automation
-- `/add-apollo` — Contact enrichment + lead import
-- `/add-hubspot` — Full CRM sync (deals, contacts, activities)
-- `/add-salesforce` — Salesforce integration
-- `/add-attio` — Attio CRM sync
-- `/add-sms` — Twilio SMS sequences
-- `/add-cal` — Cal.com / Calendly booking automation
-- `/add-clearbit` — Company enrichment
-- `sequences/` — Premium sequence library
-- BDR Brain Pro — Advanced lead scoring, A/B sequence testing, reply classification
-
----
-
-## Skills Taxonomy
-
-Skills follow the NanoClaw pattern: each skill is a branch containing a `SKILL.md` that Claude Code uses to transform your fork.
-
-```
-skills/
-  core/
-    add-gmail/         SKILL.md
-    add-telegram/      SKILL.md
-    add-whatsapp/      SKILL.md
-    add-slack/         SKILL.md
-  pro/
-    add-linkedin/      SKILL.md
-    add-hubspot/       SKILL.md
-    add-apollo/        SKILL.md
-    add-sms/           SKILL.md
-    add-cal/           SKILL.md
-```
-
-### Skill Interface Contract
-
-Every skill must:
-1. Self-register in `src/channels/registry.ts` at startup if credentials are present
-2. Export a `send(prospectId, message)` function
-3. Export a `receive()` polling function
-4. Write all events to SQLite via `src/db.ts`
-5. Update `prospects/{id}/CLAUDE.md` after every touchpoint
-
----
-
-## BDR Brain Agent
-
-The heart of BDRClaw. Runs on a schedule and acts as the strategic layer:
-
-```
-System Prompt (abbreviated):
-
-You are a world-class BDR. You have access to the full prospect database,
-all active sequences, and every communication channel. Your job is to:
-
-1. Review all prospects in the pipeline
-2. Score each lead 1-10 based on engagement signals
-3. Identify who needs a follow-up today and on which channel
-4. Draft the next message for each prospect (do not send — queue for review unless auto-send is enabled)
-5. Flag any hot leads (replied, opened 3+ times, visited pricing page)
-6. Update each prospect's CLAUDE.md with your assessment
-7. Generate a daily pipeline summary and send to the main channel
-
-Never send the same message twice. Never contact a prospect who has unsubscribed.
-Always personalize based on the prospect's CLAUDE.md history.
-```
-
----
-
-## Setup
+## Quick Start
 
 ```bash
-gh repo fork josephclark/bdrclaw --clone
-cd bdrclaw
+gh repo fork Josefusan/BDRclaw --clone
+cd BDRclaw
 claude
 ```
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup, and service configuration.
+Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup and service configuration.
 
-### Requirements
+> Commands prefixed with `/` are Claude Code skills. Type them inside the `claude` CLI prompt, not your terminal. If you don't have Claude Code, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
+
+---
+
+## Skills
+
+BDRclaw is extended via skills — Claude Code commands that modify your fork cleanly.
+
+### Available Skills
+
+| Skill | Description |
+|---|---|
+| `/add-gmail` | Cold email sequences + reply detection |
+| `/add-linkedin` | LinkedIn prospecting + DM sequences |
+| `/add-hubspot` | CRM sync, stage updates, contact creation |
+| `/add-attio` | Attio CRM integration |
+| `/add-apollo` | Contact enrichment + email finding |
+| `/add-twilio` | SMS outreach |
+| `/add-slack-outreach` | Slack Connect SDR sequences |
+| `/add-whatsapp` | WhatsApp outreach channel |
+| `/add-calendly` | Meeting link injection + booking detection |
+| `/add-clay` | Clay enrichment workflows |
+
+### Open Core Model
+
+The base BDRclaw framework is MIT licensed. Premium skills (advanced sequencing logic, multi-touch attribution, AI reply scoring) are maintained separately.
+
+> The base framework is MIT. Premium skills are the moat.
+
+---
+
+## Prospect Memory Model
+
+Each prospect gets an isolated context file:
+
+```
+prospects/
+  john-smith-acme/
+    CLAUDE.md       ← touchpoint history, stage, enrichment, notes
+  sarah-jones-beta/
+    CLAUDE.md
+```
+
+The BDR brain reads these files during its daily cycle and decides what action to take next per prospect, per channel.
+
+---
+
+## Customizing
+
+BDRclaw doesn't use configuration files. To make changes, tell Claude Code what you want:
+
+```
+"Change the follow-up cadence to 3 days between touches"
+"Add a P.S. line to all cold emails mentioning their recent funding round"
+"Only prospect companies between 50-500 employees in SaaS"
+"Flag any reply that mentions a competitor"
+```
+
+Or run `/customize` for guided changes.
+
+---
+
+## Requirements
 
 - macOS or Linux
-- Node.js 22+
+- Node.js 20+
 - Claude Code
-- Docker (macOS/Linux) or Apple Container (macOS)
+- Apple Container (macOS) or Docker (macOS/Linux)
 - Anthropic API key
 
-### Environment Variables
+---
 
-```env
-ANTHROPIC_API_KEY=
-DATABASE_URL=./data/bdrclaw.db
-TRIGGER_WORD=@BDR
-MAIN_CHANNEL=telegram          # your admin channel
-AUTO_SEND=false                # true = agent sends without review
-DAILY_BRAIN_RUN=07:00          # when BDR Brain runs each day
+## Key Files
+
+```
+src/index.ts              — Orchestrator: state, message loop, agent invocation
+src/channels/registry.ts  — Channel registry (self-registration at startup)
+src/router.ts             — Message formatting and outbound routing
+src/container-runner.ts   — Spawns streaming agent containers
+src/task-scheduler.ts     — Runs scheduled BDR tasks
+src/db.ts                 — SQLite operations
+prospects/*/CLAUDE.md     — Per-prospect memory
+groups/*/CLAUDE.md        — Per-channel group memory
+docs/SPEC.md              — Full architecture and data model spec
 ```
 
 ---
 
-## Usage
+## Philosophy
 
-From your main channel (Telegram / WhatsApp / Slack self-chat):
+**Small enough to understand.** One process, a few source files. Ask Claude Code to walk you through the entire codebase.
 
-```
-@BDR add prospect: Sarah Chen, VP Eng at Acme Corp, sarah@acme.com, linkedin.com/in/sarahchen
-@BDR enroll Sarah Chen in Cold Outreach v1 sequence
-@BDR what's the pipeline looking like this week
-@BDR who are our hottest leads right now
-@BDR pause all outreach to Acme Corp
-@BDR generate a pipeline report and send it to the team Slack
-@BDR mark Sarah Chen as qualified, she replied and wants a call Thursday
-```
+**Secure by isolation.** Agents run in Linux containers, not behind application-level permission checks. They can only see explicitly mounted directories.
 
----
+**Built for individual sellers and small teams.** Not a monolithic CRM replacement. BDRclaw fits around your existing stack and does the work you don't want to do.
 
-## Roadmap
+**AI-native.**
+- No setup wizard — Claude Code guides setup
+- No monitoring dashboard — ask Claude what's happening
+- No debugging tools — describe the problem and Claude fixes it
 
-### v0.1 — Foundation
-- [ ] Fork NanoClaw, rebrand to BDRClaw
-- [ ] Prospect data model + `prospects/*/CLAUDE.md` system
-- [ ] Sequence engine (step runner, exit conditions, multi-channel dedup)
-- [ ] BDR Brain scheduler (daily pipeline review)
-- [ ] Core skills: Gmail, Telegram, Slack
-
-### v0.2 — Outreach
-- [ ] `/add-linkedin` skill (Pro)
-- [ ] `/add-sms` skill via Twilio (Pro)
-- [ ] `/add-apollo` for contact enrichment (Pro)
-- [ ] Reply classification (interested / not interested / unsubscribe / out of office)
-
-### v0.3 — CRM Layer
-- [ ] `/add-hubspot` full sync (Pro)
-- [ ] `/add-attio` sync (Pro)
-- [ ] Deal stage auto-update from agent signals
-- [ ] Meeting booked detection + Calendly/Cal.com hook
-
-### v0.4 — Intelligence
-- [ ] Lead scoring model (engagement signals, company fit, timing)
-- [ ] A/B sequence testing
-- [ ] Reply quality scoring
-- [ ] Pipeline forecasting via BDR Brain
-
-### v1.0 — Public Launch
-- [ ] Website: bdrclaw.dev
-- [ ] Pro skills marketplace
-- [ ] Discord community
-- [ ] Hosted option (no self-hosting required)
+**Skills over features.** Don't add Salesforce to the core codebase. Add a `/add-salesforce` skill. You end up with clean code that does exactly what you need.
 
 ---
 
 ## Contributing
 
-Same philosophy as NanoClaw: **don't add features, add skills.**
+Don't add features. Add skills.
 
-If you want to add Salesforce support, don't open a PR that adds Salesforce to the core. Fork BDRClaw, build the skill on a branch, and open a PR. We'll create a `skills/add-salesforce` branch others can install.
+If you want to add Salesforce support, don't open a PR that adds Salesforce to the core codebase. Fork BDRclaw, make the changes on a branch, and open a PR. We'll create a `skill/salesforce` branch others can merge into their fork.
 
-### What Gets Merged to Core
-- Security fixes
-- Bug fixes
-- Clear improvements to the base orchestrator
+Only security fixes, bug fixes, and clear improvements will be accepted to base. Everything else lives as a skill.
 
-### What Ships as a Skill
-- New channel integrations
-- CRM connectors
-- Enrichment providers
-- Sequence templates
-- OS/platform compatibility
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ---
 
-## Security
+## Request for Skills (RFS)
 
-Agents run in containers, not behind application-level permission checks. A compromised LinkedIn skill cannot access your Gmail credentials — they're in separate containers with separate mounts.
+Skills we'd like to see:
 
-See `docs/SECURITY.md` for the full model.
+- `/add-salesforce` — Salesforce CRM sync
+- `/add-outreach` — Outreach.io sequence integration
+- `/add-apollo-sequences` — Apollo sequence automation
+- `/add-signal` — Signal messaging channel
+- `/add-instagram-dm` — Instagram DM outreach
+- `/add-twitter-dm` — Twitter/X DM outreach
+
+---
+
+## Credits
+
+Built on concepts from [NanoClaw](https://github.com/qwibitai/nanoclaw) by qwibitai. MIT licensed.
 
 ---
 
 ## License
 
-Core: MIT
-Pro Skills: Commercial (see `LICENSE_PRO`)
+MIT — see [LICENSE](./LICENSE)
 
----
-
-## Built On
-
-- [NanoClaw](https://github.com/qwibitai/nanoclaw) — the foundation
-- [Anthropic Agent SDK](https://docs.anthropic.com) — the brain
-- [Claude Code](https://claude.ai/code) — the builder
-
----
-
-*BDRClaw is built by [Clark Tech Ventures LLC](https://clarktechventures.com). If you're using it to close deals, we'd love to hear about it.*
+> The base framework is open. Build on it, fork it, customize it.
+> Premium skills are maintained separately under a commercial license.

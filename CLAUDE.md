@@ -1,12 +1,12 @@
-# BDRClaw
+# BDRclaw
 
-AI sales development platform built on NanoClaw. See [README.md](README.md) for vision and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+AI-native BDR team built on NanoClaw. See [README.md](README.md) for overview and setup. See [docs/SPEC.md](docs/SPEC.md) for full architecture and data model.
 
 ## Quick Context
 
-Single Node.js process with skill-based channel system. Channels (Gmail, LinkedIn, SMS, Slack, WhatsApp, Telegram, Discord) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each prospect has isolated filesystem and memory via `prospects/*/CLAUDE.md`.
+Single Node.js process with skill-based channel system. Channels (Gmail, LinkedIn, Twilio SMS, Slack, WhatsApp, Telegram, Discord) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each prospect has isolated filesystem and memory via `prospects/*/CLAUDE.md`.
 
-BDRClaw automates prospecting, outreach, follow-up, and CRM hygiene. The BDR Brain agent runs on a daily schedule to review the pipeline, score leads, and queue follow-up actions.
+The BDR Brain agent (`src/bdr-brain.ts`) runs on a daily schedule to review the pipeline, classify replies, detect buying signals, and queue follow-up actions.
 
 ## Key Files
 
@@ -16,20 +16,23 @@ BDRClaw automates prospecting, outreach, follow-up, and CRM hygiene. The BDR Bra
 | `src/channels/registry.ts` | Channel registry (self-registration at startup) |
 | `src/ipc.ts` | IPC watcher and task processing |
 | `src/router.ts` | Message formatting and outbound routing |
-| `src/config.ts` | Trigger pattern, paths, intervals |
-| `src/container-runner.ts` | Spawns agent containers with mounts |
-| `src/task-scheduler.ts` | Runs scheduled BDR tasks (pipeline review, follow-ups) |
-| `src/db.ts` | SQLite operations (prospects, touchpoints, sequences, CRM state) |
-| `prospects/{id}/CLAUDE.md` | Per-prospect memory (isolated) |
-| `sequences/*.md` | Outreach sequence definitions |
+| `src/prospect-queue.ts` | Per-prospect queue with global concurrency limit |
+| `src/container-runner.ts` | Spawns streaming agent containers |
+| `src/task-scheduler.ts` | Runs scheduled BDR tasks (daily brain, follow-ups) |
+| `src/bdr-brain.ts` | Daily pipeline review, action queuing, signal detection |
+| `src/db.ts` | SQLite operations (prospects, messages, tasks, sessions) |
+| `prospects/*/CLAUDE.md` | Per-prospect memory (isolated) |
+| `groups/*/CLAUDE.md` | Per-channel group memory |
+| `groups/*/sequences/*.md` | Outreach sequence definitions |
 | `container/skills/` | Skills loaded inside agent containers |
+| `docs/SPEC.md` | Full architecture and data model spec |
 
 ## Skills
 
-Four types of skills exist in BDRClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full taxonomy and guidelines.
+Four types of skills exist in BDRclaw. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full taxonomy and guidelines.
 
 - **Feature skills** — merge a `skill/*` branch to add capabilities (e.g. `/add-linkedin`, `/add-hubspot`)
-- **Utility skills** — ship code files alongside SKILL.md (e.g. `/claw`)
+- **Utility skills** — ship code files alongside SKILL.md
 - **Operational skills** — instruction-only workflows, always on `main` (e.g. `/setup`, `/debug`)
 - **Container skills** — loaded inside agent containers at runtime (`container/skills/`)
 
@@ -38,29 +41,29 @@ Four types of skills exist in BDRClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) fo
 | `/setup` | First-time installation, authentication, service configuration |
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
-| `/update-nanoclaw` | Bring upstream NanoClaw updates into a customized install |
 
-### BDR-Specific Skills
+### Available Channel/Integration Skills
 
-| Skill | Type | Description |
-|-------|------|-------------|
-| `/add-gmail` | Core (Free) | Gmail / SMTP outreach |
-| `/add-telegram` | Core (Free) | Telegram channel |
-| `/add-whatsapp` | Core (Free) | WhatsApp channel |
-| `/add-slack` | Core (Free) | Slack channel |
-| `/add-linkedin` | Pro | LinkedIn DM + connection automation |
-| `/add-hubspot` | Pro | HubSpot CRM sync |
-| `/add-apollo` | Pro | Contact enrichment + lead import |
-| `/add-sms` | Pro | Twilio SMS sequences |
-| `/add-cal` | Pro | Cal.com / Calendly booking |
+| Skill | Description |
+|-------|-------------|
+| `/add-gmail` | Cold email sequences + reply detection |
+| `/add-linkedin` | LinkedIn prospecting + DM sequences |
+| `/add-hubspot` | CRM sync, stage updates, contact creation |
+| `/add-attio` | Attio CRM integration |
+| `/add-apollo` | Contact enrichment + email finding |
+| `/add-twilio` | SMS outreach |
+| `/add-slack-outreach` | Slack Connect SDR sequences |
+| `/add-whatsapp` | WhatsApp outreach channel |
+| `/add-calendly` | Meeting link injection + booking detection |
+| `/add-clay` | Clay enrichment workflows |
 
 ## Open Core Model
 
-Core orchestrator, prospect memory, sequence engine, and base channel skills are MIT. Premium skills (LinkedIn, CRM integrations, enrichment, advanced intelligence) are commercial.
+Core orchestrator, prospect memory, sequence engine, BDR brain (basic), and base channel skills are MIT. Premium skills (advanced AI scoring, Clay/Apollo deep integration, multi-touch attribution, enterprise CRM connectors) are commercial.
 
 ## Contributing
 
-Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, skill types, SKILL.md format rules, PR requirements, and the pre-submission checklist.
+Before creating a PR, adding a skill, or preparing any contribution, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
 

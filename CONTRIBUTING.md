@@ -1,13 +1,13 @@
 # Contributing
 
-Same philosophy as NanoClaw: **don't add features, add skills.**
+Don't add features. Add skills.
 
 ## Before You Start
 
 1. **Check for existing work.** Search open PRs and issues before starting:
    ```bash
-   gh pr list --repo josephclark/bdrclaw --search "<your feature>"
-   gh issue list --repo josephclark/bdrclaw --search "<your feature>"
+   gh pr list --repo Josefusan/BDRclaw --search "<your feature>"
+   gh issue list --repo Josefusan/BDRclaw --search "<your feature>"
    ```
    If a related PR or issue exists, build on it rather than duplicating effort.
 
@@ -24,16 +24,16 @@ Same philosophy as NanoClaw: **don't add features, add skills.**
 ## What Ships as a Skill
 
 - New channel integrations (LinkedIn, SMS, etc.)
-- CRM connectors (HubSpot, Salesforce, Attio)
-- Enrichment providers (Apollo, Clearbit, Hunter)
+- CRM connectors (HubSpot, Salesforce, Attio, Pipedrive, Close)
+- Enrichment providers (Apollo, Clay, Hunter, Clearbit)
 - Sequence templates
 - OS/platform compatibility
 
-If you want to add Salesforce support, don't open a PR that adds Salesforce to the core. Fork BDRClaw, build the skill on a branch, and open a PR. We'll create a `skills/add-salesforce` branch others can install.
+If you want to add Salesforce support, don't open a PR that adds Salesforce to the core codebase. Fork BDRclaw, make the changes on a branch, and open a PR. We'll create a `skill/salesforce` branch others can merge into their fork.
 
 ## Skills
 
-BDRClaw uses [Claude Code skills](https://code.claude.com/docs/en/skills) — markdown files with optional supporting files that teach Claude how to do something. There are four types of skills, each serving a different purpose.
+BDRclaw uses [Claude Code skills](https://code.claude.com/docs/en/skills) — markdown files with optional supporting files that teach Claude how to do something. There are four types of skills, each serving a different purpose.
 
 ### Why skills?
 
@@ -43,7 +43,7 @@ Every user should have clean and minimal code that does exactly what they need. 
 
 #### 1. Feature skills (branch-based)
 
-Add capabilities to BDRClaw by merging a git branch. The SKILL.md contains setup instructions; the actual code lives on a `skill/*` branch.
+Add capabilities to BDRclaw by merging a git branch. The SKILL.md contains setup instructions; the actual code lives on a `skill/*` branch.
 
 **Location:** `.claude/skills/` on `main` (instructions only), code on `skill/*` branch
 
@@ -55,18 +55,16 @@ Add capabilities to BDRClaw by merging a git branch. The SKILL.md contains setup
 3. Claude walks through interactive setup (env vars, API keys, etc.)
 
 **Contributing a feature skill:**
-1. Fork `josephclark/bdrclaw` and branch from `main`
+1. Fork `Josefusan/BDRclaw` and branch from `main`
 2. Make the code changes (new files, modified source, updated `package.json`, etc.)
 3. Add a SKILL.md in `.claude/skills/<name>/` with setup instructions — step 1 should be merging the branch
 4. Open a PR. We'll create the `skill/<name>` branch from your work
 
 #### 2. Utility skills (with code files)
 
-Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells Claude how to install the tool; the code lives in the skill directory itself.
+Standalone tools that ship code files alongside the SKILL.md. No branch merge needed. The code is self-contained in the skill directory.
 
 **Location:** `.claude/skills/<name>/` with supporting files
-
-**Key difference from feature skills:** No branch merge needed. The code is self-contained in the skill directory and gets copied into place during installation.
 
 **Guidelines:**
 - Put code in separate files, not inline in the SKILL.md
@@ -75,7 +73,7 @@ Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells
 
 #### 3. Operational skills (instruction-only)
 
-Workflows and guides with no code changes. The SKILL.md is the entire skill — Claude follows the instructions to perform a task.
+Workflows and guides with no code changes. The SKILL.md is the entire skill.
 
 **Location:** `.claude/skills/` on `main`
 
@@ -88,7 +86,7 @@ Workflows and guides with no code changes. The SKILL.md is the entire skill — 
 
 #### 4. Container skills (agent runtime)
 
-Skills that run inside the agent container, not on the host. These teach the container agent how to use tools, format output, or perform tasks.
+Skills that run inside the agent container, not on the host.
 
 **Location:** `container/skills/<name>/`
 
@@ -97,14 +95,21 @@ Skills that run inside the agent container, not on the host. These teach the con
 - Use `allowed-tools` frontmatter to scope tool permissions
 - Keep them focused — the agent's context window is shared across all container skills
 
-### Skill Interface Contract
+### Channel Skill Interface
 
-Every channel/integration skill must:
-1. Self-register in `src/channels/registry.ts` at startup if credentials are present
-2. Export a `send(prospectId, message)` function
-3. Export a `receive()` polling function
-4. Write all events to SQLite via `src/db.ts`
-5. Update `prospects/{id}/CLAUDE.md` after every touchpoint
+Every channel skill must implement:
+
+```typescript
+interface Channel {
+  name: string;
+  type: 'inbound' | 'outbound' | 'bidirectional';
+  init(): Promise<void>;
+  send(prospectId: string, message: OutboundMessage): Promise<void>;
+  onMessage(handler: MessageHandler): void;
+}
+```
+
+And self-register in `src/channels/registry.ts` at startup if credentials are present.
 
 ### SKILL.md format
 

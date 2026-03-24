@@ -1,15 +1,14 @@
 # Changelog
 
-All notable changes to BDRClaw will be documented in this file.
+All notable changes to BDRclaw will be documented in this file.
 
 ## [0.1.0] — Foundation
 
-Initial release. Fork of NanoClaw rebranded and repurposed for AI sales development.
+Initial release. Fork of NanoClaw repurposed for AI sales development.
 
-- Prospect data model + `prospects/*/CLAUDE.md` system
-- Sequence engine (step runner, exit conditions, multi-channel dedup)
-- BDR Brain scheduler (daily pipeline review)
-- Open-core model (MIT base + commercial Pro skills)
-- Core skills: Gmail, Telegram, WhatsApp, Slack
-- Per-prospect container isolation
-- Multi-channel outreach routing
+- BDRclaw branding and README
+- Prospect memory model (`prospects/*/CLAUDE.md`)
+- BDR brain scaffold (`src/bdr-brain.ts`)
+- Basic sequence engine
+- Channel skill architecture (self-registration at startup)
+- Open core model (MIT base + commercial premium skills)
