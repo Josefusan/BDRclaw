@@ -59,6 +59,7 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { initBDRDatabase } from './bdr-db.js';
 import { startBDRBrain } from './bdr-brain.js';
+import './gmail-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
