@@ -57,6 +57,9 @@ import {
   shouldDropMessage,
 } from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import { initBDRDatabase } from './bdr-db.js';
+import { startBDRBrain } from './bdr-brain.js';
+import { startWebUI } from './web-ui.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -472,8 +475,11 @@ function ensureContainerSystemRunning(): void {
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
+  initBDRDatabase();
   logger.info('Database initialized');
   loadState();
+  startWebUI();
+  startBDRBrain();
   restoreRemoteControl();
 
   // Start credential proxy (containers route API calls through this)
