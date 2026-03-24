@@ -70,14 +70,88 @@ Channels (Email / LinkedIn / Slack / SMS / WhatsApp)
 ## Quick Start
 
 ```bash
-gh repo fork Josefusan/BDRclaw --clone
+git clone https://github.com/Josefusan/BDRclaw.git
 cd BDRclaw
-claude
+npm install
 ```
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup and service configuration.
+---
 
-> Commands prefixed with `/` are Claude Code skills. Type them inside the `claude` CLI prompt, not your terminal. If you don't have Claude Code, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
+## Setup
+
+### 1 — Configure your environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+GMAIL_CLIENT_ID=           # from Google Cloud Console
+GMAIL_CLIENT_SECRET=       # from Google Cloud Console
+GMAIL_ACCOUNT_1=you@gmail.com
+GMAIL_SENDER_NAME=Your Name
+CALENDLY_URL=https://calendly.com/yourname/30min   # optional
+```
+
+### 2 — Authorize Gmail
+
+Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com):
+1. Create a project → Enable the Gmail API
+2. APIs & Services → Credentials → + Create → OAuth Client ID → **Desktop app**
+3. Copy the Client ID and Secret into `.env`
+
+Then authorize:
+
+```bash
+npm run gmail-auth
+```
+
+Follow the prompts — it'll open a browser URL, you paste the auth code back. Tokens are saved to `store/gmail-tokens/`.
+
+### 3 — Add your email sequences
+
+Edit the templates in `groups/main/sequences/`:
+
+```
+groups/main/sequences/
+  01-initial-outreach.md    ← first cold email
+  02-follow-up.md           ← 3 days later
+  03-breakup.md             ← final email
+```
+
+Templates support `{{firstName}}`, `{{company}}`, `{{title}}`, `{{senderName}}` variables.
+
+### 4 — Add prospects
+
+```bash
+# Coming soon: npm run import-csv prospects.csv
+# For now: insert directly via the web UI or SQLite
+```
+
+Or via the web dashboard (see step 5).
+
+### 5 — Start the system
+
+```bash
+npm run dev
+```
+
+Opens the dashboard at **http://127.0.0.1:3000** (blue/black UI showing pipeline, hot leads, account status).
+
+### 6 — Run the BDR Brain
+
+```bash
+npm run brain
+```
+
+The brain reviews all active prospects, sends first-touch emails, and schedules follow-ups. After this, it runs automatically every day at 6am (configurable via `BDR_BRAIN_HOUR` in `.env`).
+
+---
+
+> If you're using Claude Code: `claude` → `/add-gmail` walks through this entire flow interactively.
 
 ---
 
@@ -152,16 +226,30 @@ Or run `/customize` for guided changes.
 ## Key Files
 
 ```
-src/index.ts              — Orchestrator: state, message loop, agent invocation
-src/channels/registry.ts  — Channel registry (self-registration at startup)
-src/router.ts             — Message formatting and outbound routing
-src/container-runner.ts   — Spawns streaming agent containers
-src/task-scheduler.ts     — Runs scheduled BDR tasks
-src/db.ts                 — SQLite operations
-prospects/*/CLAUDE.md     — Per-prospect memory
-groups/*/CLAUDE.md        — Per-channel group memory
-docs/SPEC.md              — Full architecture and data model spec
+src/index.ts                  — Orchestrator: state, message loop, agent invocation
+src/bdr-brain.ts              — Daily cycle: evaluate prospects, queue actions, detect hot leads
+src/bdr-db.ts                 — SQLite ops for prospects, accounts, touches, brain runs
+src/bdr-types.ts              — All BDR TypeScript types (stages, actions, touches, accounts)
+src/gmail-auth.ts             — OAuth2 token management for Gmail accounts
+src/gmail-sequences.ts        — Email sequence template engine
+src/gmail-bdr-actions.ts      — BDR brain handlers: send_email, classify_reply, send_meeting_link
+src/channels/gmail.ts         — Gmail channel (MIME builder, reply polling, self-registration)
+src/web-ui.ts                 — HTTP dashboard on :3000 with REST API
+setup/gmail-auth.ts           — Interactive OAuth CLI (npm run gmail-auth)
+groups/main/sequences/*.md    — Email sequence templates
+prospects/*/CLAUDE.md         — Per-prospect memory (stage, touch history, notes)
+docs/SPEC.md                  — Full architecture and data model spec
 ```
+
+### npm scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start daemon (web UI + BDR brain + Gmail channel) |
+| `npm run brain` | Trigger a BDR brain cycle immediately |
+| `npm run gmail-auth` | Authorize a Gmail account via OAuth |
+| `npm run web` | Start web dashboard only |
+| `npm run wizard` | First-time interactive setup |
 
 ---
 
