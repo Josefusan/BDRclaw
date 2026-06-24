@@ -27,7 +27,11 @@ import {
 } from './bdr-db.js';
 import { getActionHandler } from './bdr-brain.js';
 import { logger } from './logger.js';
-import type { BDRProspect, CampaignEnrollment, CampaignStep } from './bdr-types.js';
+import type {
+  BDRProspect,
+  CampaignEnrollment,
+  CampaignStep,
+} from './bdr-types.js';
 
 // ── Personalization ───────────────────────────────────────────────────────────
 
@@ -51,7 +55,10 @@ function jitterMs(minutes: number): number {
 
 // ── Step condition check ──────────────────────────────────────────────────────
 
-function conditionMet(step: CampaignStep, enrollment: CampaignEnrollment): boolean {
+function conditionMet(
+  step: CampaignStep,
+  enrollment: CampaignEnrollment,
+): boolean {
   if (step.condition === 'always') return true;
   // For no_reply / opened / clicked we'd check the touch record; for now,
   // treat no_reply as "always" since we don't yet track open pixels.
@@ -75,8 +82,16 @@ async function executeStep(
   // handler can pick up the subject override.
   if (step.action_type === 'send_email' && personalizedSubject) {
     try {
-      const existing = prospect.enrichment ? JSON.parse(prospect.enrichment) : {};
-      prospect = { ...prospect, enrichment: JSON.stringify({ ...existing, __campaign_subject: personalizedSubject }) };
+      const existing = prospect.enrichment
+        ? JSON.parse(prospect.enrichment)
+        : {};
+      prospect = {
+        ...prospect,
+        enrichment: JSON.stringify({
+          ...existing,
+          __campaign_subject: personalizedSubject,
+        }),
+      };
     } catch {
       // ignore parse errors
     }
@@ -92,16 +107,25 @@ async function executeStep(
       await handler(enriched);
       return true;
     } catch (err) {
-      logger.error({ err, prospectId: prospect.id, stepId: step.id }, 'Campaign step execution failed');
+      logger.error(
+        { err, prospectId: prospect.id, stepId: step.id },
+        'Campaign step execution failed',
+      );
       return false;
     }
   }
 
-  logger.warn({ actionType: step.action_type }, 'No handler for campaign step action_type');
+  logger.warn(
+    { actionType: step.action_type },
+    'No handler for campaign step action_type',
+  );
   return false;
 }
 
-function injectCampaignMessage(prospect: BDRProspect, message: string): BDRProspect {
+function injectCampaignMessage(
+  prospect: BDRProspect,
+  message: string,
+): BDRProspect {
   try {
     const existing = prospect.enrichment ? JSON.parse(prospect.enrichment) : {};
     return {
@@ -125,12 +149,17 @@ export async function runCampaignTick(): Promise<void> {
     try {
       await processEnrollment(enrollment);
     } catch (err) {
-      logger.error({ err, enrollmentId: enrollment.id }, 'Campaign enrollment processing error');
+      logger.error(
+        { err, enrollmentId: enrollment.id },
+        'Campaign enrollment processing error',
+      );
     }
   }
 }
 
-async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> {
+async function processEnrollment(
+  enrollment: CampaignEnrollment,
+): Promise<void> {
   const campaign = getCampaignById(enrollment.campaign_id);
   if (!campaign || campaign.status !== 'active') return;
 
@@ -141,16 +170,23 @@ async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> 
   if (!prospect) return;
 
   // Find the step we need to execute next
-  const nextStep = steps.find((s) => s.step_number > enrollment.current_step) ??
+  const nextStep =
+    steps.find((s) => s.step_number > enrollment.current_step) ??
     steps.find((s) => s.step_number === enrollment.current_step);
 
   // If all steps done, complete enrollment
-  if (!nextStep || enrollment.current_step >= steps[steps.length - 1].step_number) {
+  if (
+    !nextStep ||
+    enrollment.current_step >= steps[steps.length - 1].step_number
+  ) {
     updateEnrollment(enrollment.id, {
       status: 'completed',
       completed_at: new Date().toISOString(),
     });
-    logger.info({ enrollmentId: enrollment.id }, 'Campaign enrollment completed');
+    logger.info(
+      { enrollmentId: enrollment.id },
+      'Campaign enrollment completed',
+    );
     return;
   }
 
@@ -170,7 +206,8 @@ async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> 
   if (!ok) return;
 
   const now = new Date().toISOString();
-  const isLastStep = nextStep.step_number === steps[steps.length - 1].step_number;
+  const isLastStep =
+    nextStep.step_number === steps[steps.length - 1].step_number;
 
   updateEnrollment(enrollment.id, {
     current_step: nextStep.step_number,
@@ -179,7 +216,11 @@ async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> 
   });
 
   logger.info(
-    { campaignId: campaign.id, prospectId: prospect.id, step: nextStep.step_number },
+    {
+      campaignId: campaign.id,
+      prospectId: prospect.id,
+      step: nextStep.step_number,
+    },
     'Campaign step sent',
   );
 }

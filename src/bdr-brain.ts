@@ -295,7 +295,9 @@ export function registerActionHandler(
   logger.info({ actionType }, 'BDR Brain: action handler registered');
 }
 
-export function getActionHandler(actionType: string): ActionHandler | undefined {
+export function getActionHandler(
+  actionType: string,
+): ActionHandler | undefined {
   return actionHandlers.get(actionType as ActionType);
 }
 

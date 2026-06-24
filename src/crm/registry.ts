@@ -36,17 +36,24 @@ export async function pushToCRMs(event: CRMEvent): Promise<void> {
 
   await Promise.allSettled(
     all.map((adapter) =>
-      adapter.push(event).catch((err) =>
-        logger.warn({ err, crm: adapter.name }, 'CRM push failed'),
-      ),
+      adapter
+        .push(event)
+        .catch((err) =>
+          logger.warn({ err, crm: adapter.name }, 'CRM push failed'),
+        ),
     ),
   );
 }
 
-export async function pullFromCRMs(): Promise<import('./types.js').CRMContact[]> {
+export async function pullFromCRMs(): Promise<
+  import('./types.js').CRMContact[]
+> {
   const all = getCRMAdapters();
   const results = await Promise.allSettled(all.map((a) => a.pull()));
   return results
-    .filter((r): r is PromiseFulfilledResult<import('./types.js').CRMContact[]> => r.status === 'fulfilled')
+    .filter(
+      (r): r is PromiseFulfilledResult<import('./types.js').CRMContact[]> =>
+        r.status === 'fulfilled',
+    )
     .flatMap((r) => r.value);
 }

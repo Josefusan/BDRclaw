@@ -374,6 +374,23 @@ export function updateProspectStage(id: string, stage: string): void {
     UPDATE bdr_prospects SET stage = ?, updated_at = ? WHERE id = ?
   `,
   ).run(stage, new Date().toISOString(), id);
+
+  // ISC-25: sync to all active CRM adapters on every stage change.
+  // Import lazily to avoid circular dependency at module load time.
+  // Failure does NOT block the stage change (ISC-27).
+  const prospect = db.prepare('SELECT * FROM bdr_prospects WHERE id = ?').get(id) as
+    | import('./bdr-types.js').BDRProspect
+    | undefined;
+  if (prospect) {
+    import('./crm/registry.js').then(({ pushToCRMs }) => {
+      pushToCRMs({
+        type: 'stage_change',
+        prospect,
+        timestamp: new Date().toISOString(),
+        details: { newStage: stage },
+      }).catch(() => { /* logged inside pushToCRMs */ });
+    }).catch(() => { /* CRM registry not loaded yet */ });
+  }
 }
 
 export function updateProspectNextAction(
@@ -588,12 +605,14 @@ export function getRecentImportJobs(limit = 10): ImportJob[] {
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
 export function upsertCampaign(campaign: Campaign): void {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO bdr_campaigns
       (id, name, description, icp_description, value_proposition,
        tone, jitter_minutes, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     campaign.id,
     campaign.name,
     campaign.description ?? null,
@@ -608,19 +627,25 @@ export function upsertCampaign(campaign: Campaign): void {
 }
 
 export function getCampaignById(id: string): Campaign | undefined {
-  return db.prepare('SELECT * FROM bdr_campaigns WHERE id = ?').get(id) as Campaign | undefined;
+  return db.prepare('SELECT * FROM bdr_campaigns WHERE id = ?').get(id) as
+    | Campaign
+    | undefined;
 }
 
 export function listCampaigns(): Campaign[] {
-  return db.prepare('SELECT * FROM bdr_campaigns ORDER BY updated_at DESC').all() as Campaign[];
+  return db
+    .prepare('SELECT * FROM bdr_campaigns ORDER BY updated_at DESC')
+    .all() as Campaign[];
 }
 
 export function upsertCampaignStep(step: CampaignStep): void {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO bdr_campaign_steps
       (id, campaign_id, step_number, action_type, delay_days, subject, template, condition)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     step.id,
     step.campaign_id,
     step.step_number,
@@ -633,21 +658,27 @@ export function upsertCampaignStep(step: CampaignStep): void {
 }
 
 export function getCampaignSteps(campaignId: string): CampaignStep[] {
-  return db.prepare(
-    'SELECT * FROM bdr_campaign_steps WHERE campaign_id = ? ORDER BY step_number ASC',
-  ).all(campaignId) as CampaignStep[];
+  return db
+    .prepare(
+      'SELECT * FROM bdr_campaign_steps WHERE campaign_id = ? ORDER BY step_number ASC',
+    )
+    .all(campaignId) as CampaignStep[];
 }
 
 export function deleteCampaignSteps(campaignId: string): void {
-  db.prepare('DELETE FROM bdr_campaign_steps WHERE campaign_id = ?').run(campaignId);
+  db.prepare('DELETE FROM bdr_campaign_steps WHERE campaign_id = ?').run(
+    campaignId,
+  );
 }
 
 export function enrollProspect(enrollment: CampaignEnrollment): void {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR IGNORE INTO bdr_campaign_enrollments
       (id, campaign_id, prospect_id, current_step, status, enrolled_at)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     enrollment.id,
     enrollment.campaign_id,
     enrollment.prospect_id,
@@ -657,43 +688,71 @@ export function enrollProspect(enrollment: CampaignEnrollment): void {
   );
 }
 
-export function getEnrollment(campaignId: string, prospectId: string): CampaignEnrollment | undefined {
-  return db.prepare(
-    'SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND prospect_id = ?',
-  ).get(campaignId, prospectId) as CampaignEnrollment | undefined;
+export function getEnrollment(
+  campaignId: string,
+  prospectId: string,
+): CampaignEnrollment | undefined {
+  return db
+    .prepare(
+      'SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND prospect_id = ?',
+    )
+    .get(campaignId, prospectId) as CampaignEnrollment | undefined;
 }
 
-export function getActiveEnrollments(campaignId?: string): CampaignEnrollment[] {
+export function getActiveEnrollments(
+  campaignId?: string,
+): CampaignEnrollment[] {
   if (campaignId) {
-    return db.prepare(
-      "SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND status = 'active'",
-    ).all(campaignId) as CampaignEnrollment[];
+    return db
+      .prepare(
+        "SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND status = 'active'",
+      )
+      .all(campaignId) as CampaignEnrollment[];
   }
-  return db.prepare(
-    "SELECT * FROM bdr_campaign_enrollments WHERE status = 'active'",
-  ).all() as CampaignEnrollment[];
+  return db
+    .prepare("SELECT * FROM bdr_campaign_enrollments WHERE status = 'active'")
+    .all() as CampaignEnrollment[];
 }
 
-export function updateEnrollment(id: string, updates: Partial<CampaignEnrollment>): void {
+export function updateEnrollment(
+  id: string,
+  updates: Partial<CampaignEnrollment>,
+): void {
   const fields: string[] = [];
   const values: unknown[] = [];
-  if (updates.current_step !== undefined) { fields.push('current_step = ?'); values.push(updates.current_step); }
-  if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
-  if (updates.last_step_at !== undefined) { fields.push('last_step_at = ?'); values.push(updates.last_step_at); }
-  if (updates.completed_at !== undefined) { fields.push('completed_at = ?'); values.push(updates.completed_at); }
+  if (updates.current_step !== undefined) {
+    fields.push('current_step = ?');
+    values.push(updates.current_step);
+  }
+  if (updates.status !== undefined) {
+    fields.push('status = ?');
+    values.push(updates.status);
+  }
+  if (updates.last_step_at !== undefined) {
+    fields.push('last_step_at = ?');
+    values.push(updates.last_step_at);
+  }
+  if (updates.completed_at !== undefined) {
+    fields.push('completed_at = ?');
+    values.push(updates.completed_at);
+  }
   if (fields.length === 0) return;
   values.push(id);
-  db.prepare(`UPDATE bdr_campaign_enrollments SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(
+    `UPDATE bdr_campaign_enrollments SET ${fields.join(', ')} WHERE id = ?`,
+  ).run(...values);
 }
 
 // ── Builder Sessions ──────────────────────────────────────────────────────────
 
 export function upsertBuilderSession(session: BuilderSession): void {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO bdr_builder_sessions
       (id, messages, draft, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     session.id,
     JSON.stringify(session.messages),
     session.draft ? JSON.stringify(session.draft) : null,
@@ -703,8 +762,16 @@ export function upsertBuilderSession(session: BuilderSession): void {
 }
 
 export function getBuilderSession(id: string): BuilderSession | undefined {
-  const row = db.prepare('SELECT * FROM bdr_builder_sessions WHERE id = ?').get(id) as
-    | { id: string; messages: string; draft: string | null; created_at: string; updated_at: string }
+  const row = db
+    .prepare('SELECT * FROM bdr_builder_sessions WHERE id = ?')
+    .get(id) as
+    | {
+        id: string;
+        messages: string;
+        draft: string | null;
+        created_at: string;
+        updated_at: string;
+      }
     | undefined;
   if (!row) return undefined;
   return {

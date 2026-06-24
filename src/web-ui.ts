@@ -37,6 +37,7 @@ import {
   enrollAllActiveProspects,
   startBuilderSession,
 } from './campaign-builder.js';
+import { getLoopStatus } from './agents/loop.js';
 import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
@@ -154,6 +155,7 @@ function handleApi(
         status: 'ok',
         uptime: process.uptime(),
         ts: new Date().toISOString(),
+        loop: getLoopStatus(),
       });
       return;
     }
@@ -270,10 +272,18 @@ function handleApi(
       return;
     }
 
-    if (method === 'GET' && pathname.startsWith('/api/campaigns/') && !pathname.includes('/builder')) {
+    if (
+      method === 'GET' &&
+      pathname.startsWith('/api/campaigns/') &&
+      !pathname.includes('/builder')
+    ) {
       const id = pathname.split('/')[3];
       const campaign = getCampaignById(id);
-      if (!campaign) { res.writeHead(404); res.end(JSON.stringify({ error: 'Campaign not found' })); return; }
+      if (!campaign) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Campaign not found' }));
+        return;
+      }
       json(res, { ...campaign, steps: getCampaignSteps(id) });
       return;
     }
@@ -281,11 +291,22 @@ function handleApi(
     if (method === 'PATCH' && pathname.startsWith('/api/campaigns/')) {
       const id = pathname.split('/')[3];
       const campaign = getCampaignById(id);
-      if (!campaign) { res.writeHead(404); res.end(JSON.stringify({ error: 'Campaign not found' })); return; }
+      if (!campaign) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Campaign not found' }));
+        return;
+      }
       readBody(req, (body) => {
         try {
-          const data = JSON.parse(body) as Partial<{ status: CampaignStatus; name: string }>;
-          upsertCampaign({ ...campaign, ...data, updated_at: new Date().toISOString() });
+          const data = JSON.parse(body) as Partial<{
+            status: CampaignStatus;
+            name: string;
+          }>;
+          upsertCampaign({
+            ...campaign,
+            ...data,
+            updated_at: new Date().toISOString(),
+          });
           // Auto-enroll active prospects when activating a campaign
           if (data.status === 'active') {
             const enrolled = enrollAllActiveProspects(id);
@@ -293,24 +314,39 @@ function handleApi(
           } else {
             json(res, { ok: true });
           }
-        } catch { res.writeHead(400); res.end(JSON.stringify({ error: 'Invalid body' })); }
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid body' }));
+        }
       });
       return;
     }
 
     // Campaign enrollments
-    if (method === 'GET' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/enrollments')) {
+    if (
+      method === 'GET' &&
+      pathname.startsWith('/api/campaigns/') &&
+      pathname.endsWith('/enrollments')
+    ) {
       const id = pathname.split('/')[3];
       json(res, getActiveEnrollments(id));
       return;
     }
 
-    if (method === 'POST' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/enroll')) {
+    if (
+      method === 'POST' &&
+      pathname.startsWith('/api/campaigns/') &&
+      pathname.endsWith('/enroll')
+    ) {
       const id = pathname.split('/')[3];
       readBody(req, (body) => {
         try {
           const { prospect_id } = JSON.parse(body);
-          if (!prospect_id) { res.writeHead(400); res.end(JSON.stringify({ error: 'prospect_id required' })); return; }
+          if (!prospect_id) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'prospect_id required' }));
+            return;
+          }
           enrollProspect({
             id: crypto.randomUUID(),
             campaign_id: id,
@@ -320,7 +356,10 @@ function handleApi(
             enrolled_at: new Date().toISOString(),
           });
           json(res, { ok: true });
-        } catch { res.writeHead(400); res.end(JSON.stringify({ error: 'Invalid body' })); }
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid body' }));
+        }
       });
       return;
     }
@@ -331,7 +370,8 @@ function handleApi(
       const session = startBuilderSession();
       json(res, {
         sessionId: session.id,
-        message: "Hi! I'm BDR Claude. I'll build your entire outreach campaign in a few questions.\n\nFirst — what product or service are you selling, and in one sentence, who is it for?",
+        message:
+          "Hi! I'm BDR Claude. I'll build your entire outreach campaign in a few questions.\n\nFirst — what product or service are you selling, and in one sentence, who is it for?",
       });
       return;
     }
@@ -341,7 +381,13 @@ function handleApi(
         (async () => {
           try {
             const { sessionId, message } = JSON.parse(body);
-            if (!sessionId || !message) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and message required' })); return; }
+            if (!sessionId || !message) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({ error: 'sessionId and message required' }),
+              );
+              return;
+            }
             const result = await builderChat(sessionId, message);
             json(res, result);
           } catch (err) {
@@ -354,13 +400,21 @@ function handleApi(
       return;
     }
 
-    if (method === 'POST' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/edit')) {
+    if (
+      method === 'POST' &&
+      pathname.startsWith('/api/campaigns/') &&
+      pathname.endsWith('/edit')
+    ) {
       const id = pathname.split('/')[3];
       readBody(req, (body) => {
         (async () => {
           try {
             const { instruction } = JSON.parse(body);
-            if (!instruction) { res.writeHead(400); res.end(JSON.stringify({ error: 'instruction required' })); return; }
+            if (!instruction) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'instruction required' }));
+              return;
+            }
             const result = await editCampaign(id, instruction);
             json(res, result);
           } catch (err) {
@@ -375,7 +429,10 @@ function handleApi(
     // ── CRM endpoints ─────────────────────────────────────────────────────────
 
     if (method === 'GET' && pathname === '/api/crm/adapters') {
-      json(res, getCRMAdapters().map((a) => ({ name: a.name })));
+      json(
+        res,
+        getCRMAdapters().map((a) => ({ name: a.name })),
+      );
       return;
     }
 

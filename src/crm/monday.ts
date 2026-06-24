@@ -26,18 +26,22 @@ import { registerCRM } from './registry.js';
 import type { CRMAdapter, CRMContact, CRMEvent } from './types.js';
 
 const STAGE_LABEL_MAP: Record<ProspectStage, string> = {
-  identified:     'Identified',
-  outreach_sent:  'Outreach Sent',
-  follow_up:      'Following Up',
-  replied:        'Replied',
-  interested:     'Interested',
+  identified: 'Identified',
+  outreach_sent: 'Outreach Sent',
+  follow_up: 'Following Up',
+  replied: 'Replied',
+  interested: 'Interested',
   meeting_booked: 'Meeting Booked',
-  handed_off:     'Handed Off',
+  handed_off: 'Handed Off',
   not_interested: 'Not Interested',
-  unsubscribed:   'Unsubscribed',
+  unsubscribed: 'Unsubscribed',
 };
 
-function mondayQuery<T>(apiKey: string, query: string, variables?: unknown): Promise<T> {
+function mondayQuery<T>(
+  apiKey: string,
+  query: string,
+  variables?: unknown,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ query, variables });
     const options: https.RequestOptions = {
@@ -73,11 +77,11 @@ function mondayQuery<T>(apiKey: string, query: string, variables?: unknown): Pro
 class MondayAdapter implements CRMAdapter {
   readonly name = 'monday';
 
-  private readonly colEmail   = process.env.MONDAY_COL_EMAIL   ?? 'email';
-  private readonly colCompany = process.env.MONDAY_COL_COMPANY  ?? 'text';
-  private readonly colTitle   = process.env.MONDAY_COL_TITLE    ?? 'job_title';
-  private readonly colPhone   = process.env.MONDAY_COL_PHONE    ?? 'phone';
-  private readonly colStatus  = process.env.MONDAY_COL_STATUS   ?? 'status';
+  private readonly colEmail = process.env.MONDAY_COL_EMAIL ?? 'email';
+  private readonly colCompany = process.env.MONDAY_COL_COMPANY ?? 'text';
+  private readonly colTitle = process.env.MONDAY_COL_TITLE ?? 'job_title';
+  private readonly colPhone = process.env.MONDAY_COL_PHONE ?? 'phone';
+  private readonly colStatus = process.env.MONDAY_COL_STATUS ?? 'status';
 
   constructor(
     private readonly apiKey: string,
@@ -93,43 +97,62 @@ class MondayAdapter implements CRMAdapter {
     const { prospect } = event;
 
     const columnValues = JSON.stringify({
-      [this.colEmail]:   prospect.email   ? { email: prospect.email, text: prospect.email }   : undefined,
+      [this.colEmail]: prospect.email
+        ? { email: prospect.email, text: prospect.email }
+        : undefined,
       [this.colCompany]: prospect.company,
-      [this.colTitle]:   prospect.title,
-      [this.colPhone]:   prospect.phone   ? { phone: prospect.phone, countryShortName: 'US' } : undefined,
-      [this.colStatus]:  { label: this.mapStage(prospect.stage) },
+      [this.colTitle]: prospect.title,
+      [this.colPhone]: prospect.phone
+        ? { phone: prospect.phone, countryShortName: 'US' }
+        : undefined,
+      [this.colStatus]: { label: this.mapStage(prospect.stage) },
     });
 
     // Try to find item by email
     const search = await mondayQuery<{
       items_page_by_column_values: { items: Array<{ id: string }> };
-    }>(this.apiKey, `
+    }>(
+      this.apiKey,
+      `
       query($board: ID!, $col: String!, $val: String!) {
         items_page_by_column_values(board_id: $board, columns: [{ column_id: $col, column_values: [$val] }], limit: 1) {
           items { id }
         }
       }
-    `, { board: this.boardId, col: this.colEmail, val: prospect.email ?? '' }).catch(() => ({
+    `,
+      { board: this.boardId, col: this.colEmail, val: prospect.email ?? '' },
+    ).catch(() => ({
       items_page_by_column_values: { items: [] },
     }));
 
     const existingId = search.items_page_by_column_values.items[0]?.id;
 
     if (existingId) {
-      await mondayQuery(this.apiKey, `
+      await mondayQuery(
+        this.apiKey,
+        `
         mutation($board: ID!, $item: ID!, $values: JSON!) {
           change_multiple_column_values(board_id: $board, item_id: $item, column_values: $values) { id }
         }
-      `, { board: this.boardId, item: existingId, values: columnValues });
+      `,
+        { board: this.boardId, item: existingId, values: columnValues },
+      );
     } else {
-      await mondayQuery(this.apiKey, `
+      await mondayQuery(
+        this.apiKey,
+        `
         mutation($board: ID!, $name: String!, $values: JSON!) {
           create_item(board_id: $board, item_name: $name, column_values: $values) { id }
         }
-      `, { board: this.boardId, name: prospect.name, values: columnValues });
+      `,
+        { board: this.boardId, name: prospect.name, values: columnValues },
+      );
     }
 
-    logger.info({ prospectId: prospect.id, event: event.type }, 'Monday.com item synced');
+    logger.info(
+      { prospectId: prospect.id, event: event.type },
+      'Monday.com item synced',
+    );
   }
 
   async pull(): Promise<CRMContact[]> {
@@ -143,7 +166,9 @@ class MondayAdapter implements CRMAdapter {
           }>;
         };
       }>;
-    }>(this.apiKey, `
+    }>(
+      this.apiKey,
+      `
       query($board: ID!) {
         boards(ids: [$board]) {
           items_page(limit: 100) {
@@ -154,20 +179,24 @@ class MondayAdapter implements CRMAdapter {
           }
         }
       }
-    `, { board: this.boardId });
+    `,
+      { board: this.boardId },
+    );
 
     const items = result.boards[0]?.items_page.items ?? [];
     return items.map((item) => {
-      const colMap = Object.fromEntries(item.column_values.map((c) => [c.id, c.text ?? '']));
+      const colMap = Object.fromEntries(
+        item.column_values.map((c) => [c.id, c.text ?? '']),
+      );
       return {
         external_id: item.id,
-        name:        item.name,
-        email:       colMap[this.colEmail],
-        company:     colMap[this.colCompany],
-        title:       colMap[this.colTitle],
-        phone:       colMap[this.colPhone],
-        crm_stage:   colMap[this.colStatus],
-        raw:         item,
+        name: item.name,
+        email: colMap[this.colEmail],
+        company: colMap[this.colCompany],
+        title: colMap[this.colTitle],
+        phone: colMap[this.colPhone],
+        crm_stage: colMap[this.colStatus],
+        raw: item,
       };
     });
   }
@@ -184,11 +213,13 @@ class MondayAdapter implements CRMAdapter {
 
 // ── Self-registration ─────────────────────────────────────────────────────────
 
-const apiKey  = process.env.MONDAY_API_KEY;
+const apiKey = process.env.MONDAY_API_KEY;
 const boardId = process.env.MONDAY_BOARD_ID;
 
 if (apiKey && boardId) {
   registerCRM(new MondayAdapter(apiKey, boardId));
 } else {
-  logger.debug('Monday.com: MONDAY_API_KEY or MONDAY_BOARD_ID not set — adapter disabled');
+  logger.debug(
+    'Monday.com: MONDAY_API_KEY or MONDAY_BOARD_ID not set — adapter disabled',
+  );
 }

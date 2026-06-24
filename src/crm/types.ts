@@ -15,8 +15,8 @@ export interface CRMContact {
   name?: string;
   company?: string;
   title?: string;
-  crm_stage?: string;    // the CRM's own stage label
-  raw?: unknown;         // full CRM response for debugging
+  crm_stage?: string; // the CRM's own stage label
+  raw?: unknown; // full CRM response for debugging
 }
 
 export type CRMEventType =

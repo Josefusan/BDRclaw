@@ -66,6 +66,8 @@ import './telegram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
 import { registerCampaignRunner } from './campaign-runner.js';
+import { startAgenticLoop } from './agents/loop.js';
+import { processReply } from './agents/reply-handler.js';
 // CRM adapters — self-register when env vars are set
 import './crm/hubspot.js';
 import './crm/salesforce.js';
@@ -491,6 +493,7 @@ async function main(): Promise<void> {
   startWebUI();
   startBDRBrain();
   registerCampaignRunner();
+  startAgenticLoop();
   restoreRemoteControl();
 
   // Start credential proxy (containers route API calls through this)

@@ -145,9 +145,7 @@ export async function builderChat(
   session.updated_at = new Date().toISOString();
 
   // Check if the assistant generated a campaign JSON block
-  const campaignMatch = assistantText.match(
-    /```campaign\s*([\s\S]*?)```/,
-  );
+  const campaignMatch = assistantText.match(/```campaign\s*([\s\S]*?)```/);
 
   if (!campaignMatch) {
     // Still in conversation phase
@@ -211,7 +209,10 @@ function parseCampaignJson(raw: string): RawCampaignJson {
   return data;
 }
 
-function saveCampaign(raw: RawCampaignJson): { campaign: Campaign; steps: CampaignStep[] } {
+function saveCampaign(raw: RawCampaignJson): {
+  campaign: Campaign;
+  steps: CampaignStep[];
+} {
   const now = new Date().toISOString();
   const campaignId = crypto.randomUUID();
 

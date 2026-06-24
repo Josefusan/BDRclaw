@@ -182,10 +182,10 @@ export interface Campaign {
   id: string;
   name: string;
   description?: string;
-  icp_description?: string;   // "VP Sales at B2B SaaS, 50-500 employees"
+  icp_description?: string; // "VP Sales at B2B SaaS, 50-500 employees"
   value_proposition?: string;
   tone: CampaignTone;
-  jitter_minutes: number;     // random ± delay per send for human-likeness
+  jitter_minutes: number; // random ± delay per send for human-likeness
   status: CampaignStatus;
   created_at: string;
   updated_at: string;
@@ -196,10 +196,10 @@ export interface CampaignStep {
   campaign_id: string;
   step_number: number;
   action_type: ActionType;
-  delay_days: number;         // days after previous step
-  subject?: string;           // email subject
-  template: string;           // message with {{firstName}}, {{company}}, {{title}}
-  condition: StepCondition;   // when to run this step
+  delay_days: number; // days after previous step
+  subject?: string; // email subject
+  template: string; // message with {{firstName}}, {{company}}, {{title}}
+  condition: StepCondition; // when to run this step
 }
 
 export interface CampaignEnrollment {
@@ -217,7 +217,9 @@ export interface CampaignEnrollment {
 export interface BuilderSession {
   id: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-  draft?: Partial<Campaign & { steps: Omit<CampaignStep, 'id' | 'campaign_id'>[] }>;
+  draft?: Partial<
+    Campaign & { steps: Omit<CampaignStep, 'id' | 'campaign_id'>[] }
+  >;
   created_at: string;
   updated_at: string;
 }

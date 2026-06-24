@@ -26,15 +26,15 @@ import { registerCRM } from './registry.js';
 import type { CRMAdapter, CRMContact, CRMEvent } from './types.js';
 
 const LEAD_STATUS_MAP: Record<ProspectStage, string> = {
-  identified:     'Open - Not Contacted',
-  outreach_sent:  'Working',
-  follow_up:      'Working',
-  replied:        'Working',
-  interested:     'Working',
+  identified: 'Open - Not Contacted',
+  outreach_sent: 'Working',
+  follow_up: 'Working',
+  replied: 'Working',
+  interested: 'Working',
   meeting_booked: 'Closed - Converted',
-  handed_off:     'Closed - Converted',
+  handed_off: 'Closed - Converted',
   not_interested: 'Closed - Not Converted',
-  unsubscribed:   'Closed - Not Converted',
+  unsubscribed: 'Closed - Not Converted',
 };
 
 function sfRequest<T>(
@@ -95,14 +95,14 @@ class SalesforceAdapter implements CRMAdapter {
     const nameParts = prospect.name.split(' ');
 
     const leadData = {
-      FirstName:   nameParts[0] ?? '',
-      LastName:    nameParts.slice(1).join(' ') || prospect.company,
-      Company:     prospect.company,
-      Title:       prospect.title,
-      Status:      this.mapStage(prospect.stage),
+      FirstName: nameParts[0] ?? '',
+      LastName: nameParts.slice(1).join(' ') || prospect.company,
+      Company: prospect.company,
+      Title: prospect.title,
+      Status: this.mapStage(prospect.stage),
       ...(prospect.email ? { Email: prospect.email } : {}),
       ...(prospect.phone ? { Phone: prospect.phone } : {}),
-      LeadSource:  'BDRclaw',
+      LeadSource: 'BDRclaw',
       Description: `Stage: ${prospect.stage} | Last event: ${event.type}`,
     };
 
@@ -122,12 +122,27 @@ class SalesforceAdapter implements CRMAdapter {
     }
 
     if (leadId) {
-      await sfRequest('PATCH', `/services/data/v59.0/sobjects/Lead/${leadId}`, this.instanceUrl, this.accessToken, leadData);
+      await sfRequest(
+        'PATCH',
+        `/services/data/v59.0/sobjects/Lead/${leadId}`,
+        this.instanceUrl,
+        this.accessToken,
+        leadData,
+      );
     } else {
-      await sfRequest('POST', '/services/data/v59.0/sobjects/Lead/', this.instanceUrl, this.accessToken, leadData);
+      await sfRequest(
+        'POST',
+        '/services/data/v59.0/sobjects/Lead/',
+        this.instanceUrl,
+        this.accessToken,
+        leadData,
+      );
     }
 
-    logger.info({ prospectId: prospect.id, event: event.type }, 'Salesforce lead synced');
+    logger.info(
+      { prospectId: prospect.id, event: event.type },
+      'Salesforce lead synced',
+    );
   }
 
   async pull(): Promise<CRMContact[]> {
@@ -150,23 +165,33 @@ class SalesforceAdapter implements CRMAdapter {
         Phone?: string;
         Status?: string;
       }>;
-    }>('GET', `/services/data/v59.0/query/?q=${query}`, this.instanceUrl, this.accessToken);
+    }>(
+      'GET',
+      `/services/data/v59.0/query/?q=${query}`,
+      this.instanceUrl,
+      this.accessToken,
+    );
 
     return result.records.map((r) => ({
       external_id: r.Id,
-      name:        [r.FirstName, r.LastName].filter(Boolean).join(' ') || undefined,
-      company:     r.Company,
-      title:       r.Title,
-      email:       r.Email,
-      phone:       r.Phone,
-      crm_stage:   r.Status,
-      raw:         r,
+      name: [r.FirstName, r.LastName].filter(Boolean).join(' ') || undefined,
+      company: r.Company,
+      title: r.Title,
+      email: r.Email,
+      phone: r.Phone,
+      crm_stage: r.Status,
+      raw: r,
     }));
   }
 
   async healthCheck(): Promise<boolean> {
     try {
-      await sfRequest('GET', '/services/data/v59.0/limits', this.instanceUrl, this.accessToken);
+      await sfRequest(
+        'GET',
+        '/services/data/v59.0/limits',
+        this.instanceUrl,
+        this.accessToken,
+      );
       return true;
     } catch {
       return false;
@@ -176,11 +201,13 @@ class SalesforceAdapter implements CRMAdapter {
 
 // ── Self-registration ─────────────────────────────────────────────────────────
 
-const instanceUrl  = process.env.SALESFORCE_INSTANCE_URL;
-const accessToken  = process.env.SALESFORCE_ACCESS_TOKEN;
+const instanceUrl = process.env.SALESFORCE_INSTANCE_URL;
+const accessToken = process.env.SALESFORCE_ACCESS_TOKEN;
 
 if (instanceUrl && accessToken) {
   registerCRM(new SalesforceAdapter(instanceUrl, accessToken));
 } else {
-  logger.debug('Salesforce: SALESFORCE_INSTANCE_URL or SALESFORCE_ACCESS_TOKEN not set — adapter disabled');
+  logger.debug(
+    'Salesforce: SALESFORCE_INSTANCE_URL or SALESFORCE_ACCESS_TOKEN not set — adapter disabled',
+  );
 }

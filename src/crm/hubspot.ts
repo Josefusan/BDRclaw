@@ -26,15 +26,15 @@ import type { CRMAdapter, CRMContact, CRMEvent } from './types.js';
 
 // Default stage mapping — override via env vars HUBSPOT_STAGE_<STAGE>=<hubspot-stage-id>
 const DEFAULT_STAGE_MAP: Record<ProspectStage, string> = {
-  identified:      'appointmentscheduled',
-  outreach_sent:   'appointmentscheduled',
-  follow_up:       'qualifiedtobuy',
-  replied:         'presentationscheduled',
-  interested:      'decisionmakerboughtin',
-  meeting_booked:  'contractsent',
-  handed_off:      'closedwon',
-  not_interested:  'closedlost',
-  unsubscribed:    'closedlost',
+  identified: 'appointmentscheduled',
+  outreach_sent: 'appointmentscheduled',
+  follow_up: 'qualifiedtobuy',
+  replied: 'presentationscheduled',
+  interested: 'decisionmakerboughtin',
+  meeting_booked: 'contractsent',
+  handed_off: 'closedwon',
+  not_interested: 'closedlost',
+  unsubscribed: 'closedlost',
 };
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -87,7 +87,9 @@ class HubSpotAdapter implements CRMAdapter {
 
   mapStage(stage: ProspectStage): string {
     const envKey = `HUBSPOT_STAGE_${stage.toUpperCase()}`;
-    return process.env[envKey] ?? DEFAULT_STAGE_MAP[stage] ?? 'appointmentscheduled';
+    return (
+      process.env[envKey] ?? DEFAULT_STAGE_MAP[stage] ?? 'appointmentscheduled'
+    );
   }
 
   async push(event: CRMEvent): Promise<void> {
@@ -96,37 +98,53 @@ class HubSpotAdapter implements CRMAdapter {
     // Upsert contact by email (or linkedin_url as fallback)
     const properties: Record<string, string> = {
       firstname: prospect.name.split(' ')[0] ?? '',
-      lastname:  prospect.name.split(' ').slice(1).join(' ') || '',
-      company:   prospect.company,
-      jobtitle:  prospect.title,
-      ...(prospect.email       ? { email: prospect.email }                 : {}),
-      ...(prospect.phone       ? { phone: prospect.phone }                 : {}),
-      ...(prospect.linkedin_url? { hs_linkedin_url: prospect.linkedin_url }: {}),
+      lastname: prospect.name.split(' ').slice(1).join(' ') || '',
+      company: prospect.company,
+      jobtitle: prospect.title,
+      ...(prospect.email ? { email: prospect.email } : {}),
+      ...(prospect.phone ? { phone: prospect.phone } : {}),
+      ...(prospect.linkedin_url
+        ? { hs_linkedin_url: prospect.linkedin_url }
+        : {}),
     };
 
     let contactId: string | undefined;
     try {
       if (prospect.email) {
         // Try to find existing contact by email
-        const search = await hubspotRequest<{ total: number; results: Array<{ id: string }> }>(
-          'POST',
-          '/crm/v3/objects/contacts/search',
-          this.token,
-          {
-            filterGroups: [{
-              filters: [{ propertyName: 'email', operator: 'EQ', value: prospect.email }],
-            }],
-            limit: 1,
-          },
-        );
+        const search = await hubspotRequest<{
+          total: number;
+          results: Array<{ id: string }>;
+        }>('POST', '/crm/v3/objects/contacts/search', this.token, {
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'email',
+                  operator: 'EQ',
+                  value: prospect.email,
+                },
+              ],
+            },
+          ],
+          limit: 1,
+        });
         contactId = search.results[0]?.id;
       }
 
       if (contactId) {
-        await hubspotRequest('PATCH', `/crm/v3/objects/contacts/${contactId}`, this.token, { properties });
+        await hubspotRequest(
+          'PATCH',
+          `/crm/v3/objects/contacts/${contactId}`,
+          this.token,
+          { properties },
+        );
       } else {
         const created = await hubspotRequest<{ id: string }>(
-          'POST', '/crm/v3/objects/contacts', this.token, { properties },
+          'POST',
+          '/crm/v3/objects/contacts',
+          this.token,
+          { properties },
         );
         contactId = created.id;
       }
@@ -143,7 +161,6 @@ class HubSpotAdapter implements CRMAdapter {
       }).catch(() => {
         // Timeline events require a custom event template; skip if not configured
       });
-
     } catch (err) {
       logger.warn({ err, prospectId: prospect.id }, 'HubSpot push failed');
       throw err;
@@ -173,39 +190,54 @@ class HubSpotAdapter implements CRMAdapter {
           lifecyclestage?: string;
         };
       }>;
-    }>(
-      'POST',
-      '/crm/v3/objects/contacts/search',
-      this.token,
-      {
-        filterGroups: [{
-          filters: [{
-            propertyName: 'lastmodifieddate',
-            operator: 'GTE',
-            value: since,
-          }],
-        }],
-        properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'phone', 'hs_linkedin_url', 'lifecyclestage'],
-        limit: 100,
-      },
-    );
+    }>('POST', '/crm/v3/objects/contacts/search', this.token, {
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: 'lastmodifieddate',
+              operator: 'GTE',
+              value: since,
+            },
+          ],
+        },
+      ],
+      properties: [
+        'email',
+        'firstname',
+        'lastname',
+        'company',
+        'jobtitle',
+        'phone',
+        'hs_linkedin_url',
+        'lifecyclestage',
+      ],
+      limit: 100,
+    });
 
     return result.results.map((r) => ({
       external_id: r.id,
-      email:        r.properties.email,
-      phone:        r.properties.phone,
+      email: r.properties.email,
+      phone: r.properties.phone,
       linkedin_url: r.properties.hs_linkedin_url,
-      name:         [r.properties.firstname, r.properties.lastname].filter(Boolean).join(' ') || undefined,
-      company:      r.properties.company,
-      title:        r.properties.jobtitle,
-      crm_stage:    r.properties.lifecyclestage,
-      raw:          r,
+      name:
+        [r.properties.firstname, r.properties.lastname]
+          .filter(Boolean)
+          .join(' ') || undefined,
+      company: r.properties.company,
+      title: r.properties.jobtitle,
+      crm_stage: r.properties.lifecyclestage,
+      raw: r,
     }));
   }
 
   async healthCheck(): Promise<boolean> {
     try {
-      await hubspotRequest('GET', '/crm/v3/objects/contacts?limit=1', this.token);
+      await hubspotRequest(
+        'GET',
+        '/crm/v3/objects/contacts?limit=1',
+        this.token,
+      );
       return true;
     } catch {
       return false;
