@@ -9,8 +9,14 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { URL } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
 import {
   addProspect,
@@ -24,6 +30,7 @@ import {
   getHotProspects,
   getPipelineStats,
   getProspectById,
+  getRecentActivity,
   getRecentBrainRuns,
   getRecentImportJobs,
   listCampaigns,
@@ -64,11 +71,38 @@ function route(req: http.IncomingMessage, res: http.ServerResponse): void {
     return;
   }
 
-  // Dashboard HTML
-  if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(DASHBOARD_HTML);
-    return;
+  // Static files from public/
+  if (method === 'GET' && !pathname.startsWith('/api/') && !pathname.startsWith('/webhooks/')) {
+    const filePath =
+      pathname === '/' || pathname === '/index.html'
+        ? path.join(PUBLIC_DIR, 'index.html')
+        : path.join(PUBLIC_DIR, pathname);
+
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mime: Record<string, string> = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      };
+      res.writeHead(200, { 'Content-Type': (mime[ext] ?? 'text/plain') + '; charset=utf-8' });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    // SPA fallback: unknown paths serve index.html (client-side routing)
+    if (pathname !== '/' && !pathname.includes('.')) {
+      const indexPath = path.join(PUBLIC_DIR, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        fs.createReadStream(indexPath).pipe(res);
+        return;
+      }
+    }
   }
 
   // API routes
@@ -156,6 +190,100 @@ function handleApi(
         uptime: process.uptime(),
         ts: new Date().toISOString(),
         loop: getLoopStatus(),
+      });
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/activity') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '25', 10);
+      json(res, getRecentActivity(limit));
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/channels/status') {
+      json(res, {
+        email: {
+          active: !!(process.env.GMAIL_ACCOUNT_1 || process.env.GMAIL_ACCOUNT_2),
+          label: 'Gmail',
+          account: process.env.GMAIL_ACCOUNT_1 ?? process.env.GMAIL_ACCOUNT_2 ?? null,
+          envKey: 'GMAIL_ACCOUNT_1',
+          setupSteps: [
+            'Go to your Google account → Security → App Passwords',
+            'Create an app password for "Mail"',
+            'Set GMAIL_ACCOUNT_1=your@gmail.com and GMAIL_APP_PASSWORD=<password> in .env',
+          ],
+        },
+        linkedin: {
+          active: process.env.LINKEDIN_ENABLED === 'true',
+          label: 'LinkedIn',
+          account: null,
+          envKey: 'LINKEDIN_ENABLED',
+          setupSteps: [
+            'Log in to linkedin.com in Chrome',
+            'Open DevTools → Application → Cookies',
+            'Copy the value of the "li_at" cookie',
+            'Set LINKEDIN_ENABLED=true and LI_AT=<cookie_value> in .env',
+          ],
+        },
+        sms: {
+          active: process.env.SMS_ENABLED === 'true' && !!process.env.TWILIO_ACCOUNT_SID,
+          label: 'SMS',
+          account: process.env.TWILIO_PHONE_NUMBER ?? null,
+          envKey: 'SMS_ENABLED',
+          setupSteps: [
+            'Create a free Twilio account at twilio.com',
+            'Buy a phone number in the Twilio console',
+            'Copy your Account SID and Auth Token from the dashboard',
+            'Set SMS_ENABLED=true, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env',
+          ],
+        },
+        whatsapp: {
+          active: !!process.env.TWILIO_WHATSAPP_NUMBER,
+          label: 'WhatsApp',
+          account: process.env.TWILIO_WHATSAPP_NUMBER ?? null,
+          envKey: 'TWILIO_WHATSAPP_NUMBER',
+          setupSteps: [
+            'In Twilio console, enable WhatsApp Sandbox under Messaging',
+            'Follow the sandbox setup instructions from Twilio',
+            'Set TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886 in .env',
+          ],
+        },
+        telegram: {
+          active: !!process.env.TELEGRAM_BOT_TOKEN,
+          label: 'Telegram',
+          account: null,
+          envKey: 'TELEGRAM_BOT_TOKEN',
+          setupSteps: [
+            'Open Telegram and search for @BotFather',
+            'Send /newbot and follow the prompts to create your bot',
+            'Copy the API token that BotFather gives you',
+            'Set TELEGRAM_BOT_TOKEN=<your_token> in .env',
+          ],
+        },
+        twitter: {
+          active: !!process.env.TWITTER_API_KEY,
+          label: 'Twitter / X',
+          account: null,
+          envKey: 'TWITTER_API_KEY',
+          setupSteps: [
+            'Go to developer.twitter.com and create a project + app',
+            'Enable "Read and Write and Direct Messages" permissions',
+            'Create access tokens under "Keys and Tokens"',
+            'Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET in .env',
+          ],
+        },
+        instagram: {
+          active: process.env.INSTAGRAM_ENABLED === 'true' && !!process.env.INSTAGRAM_ACCESS_TOKEN,
+          label: 'Instagram',
+          account: process.env.INSTAGRAM_ACCOUNT_ID ?? null,
+          envKey: 'INSTAGRAM_ENABLED',
+          setupSteps: [
+            'Create a Meta Developer account at developers.facebook.com',
+            'Create an app with Messenger/Instagram permissions',
+            'Generate a long-lived access token for your Instagram Business account',
+            'Set INSTAGRAM_ENABLED=true, INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID in .env',
+          ],
+        },
       });
       return;
     }

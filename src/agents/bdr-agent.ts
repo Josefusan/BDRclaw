@@ -16,28 +16,40 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { readProspectMemory } from '../bdr-brain.js';
 import { logger } from '../logger.js';
-import type { BDRProspect, Campaign, CampaignStep, TouchChannel } from '../bdr-types.js';
+import type {
+  BDRProspect,
+  Campaign,
+  CampaignStep,
+  TouchChannel,
+} from '../bdr-types.js';
 
 const ai = new Anthropic();
 
 // ── Channel guidance ──────────────────────────────────────────────────────────
 
 const CHANNEL_GUIDANCE: Record<string, string> = {
-  email:       'Professional email. Subject line + body. Can be 3-5 short paragraphs. Clear CTA at end.',
-  linkedin:    'LinkedIn DM or connection note. Max 300 chars for connection requests. Warm, professional. No hard sell.',
-  linkedin_connect: 'LinkedIn connection request note. MAX 300 characters. One sentence on why connecting. No pitch.',
-  twitter:     'Twitter/X DM. Casual, conversational. Under 280 chars ideally. Don\'t sound like a bot.',
-  sms:         'SMS text. VERY brief, under 160 chars ideally. First-name only. Conversational. Include name at end.',
-  whatsapp:    'WhatsApp message. Conversational, not too long. Can use line breaks. Slightly more casual than email.',
-  telegram:    'Telegram message. Conversational. Can include emojis sparingly. Under 500 chars.',
-  instagram:   'Instagram DM. Casual, friendly. Under 500 chars. Reference their content or business if possible.',
+  email:
+    'Professional email. Subject line + body. Can be 3-5 short paragraphs. Clear CTA at end.',
+  linkedin:
+    'LinkedIn DM or connection note. Max 300 chars for connection requests. Warm, professional. No hard sell.',
+  linkedin_connect:
+    'LinkedIn connection request note. MAX 300 characters. One sentence on why connecting. No pitch.',
+  twitter:
+    "Twitter/X DM. Casual, conversational. Under 280 chars ideally. Don't sound like a bot.",
+  sms: 'SMS text. VERY brief, under 160 chars ideally. First-name only. Conversational. Include name at end.',
+  whatsapp:
+    'WhatsApp message. Conversational, not too long. Can use line breaks. Slightly more casual than email.',
+  telegram:
+    'Telegram message. Conversational. Can include emojis sparingly. Under 500 chars.',
+  instagram:
+    'Instagram DM. Casual, friendly. Under 500 chars. Reference their content or business if possible.',
 };
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export interface ComposedMessage {
   body: string;
-  subject?: string;  // email only
+  subject?: string; // email only
   channel: TouchChannel;
 }
 
@@ -47,8 +59,14 @@ export async function composeMessage(
   campaign: Campaign,
 ): Promise<ComposedMessage> {
   const memory = readProspectMemory(prospect.id);
-  const channelKey = step.action_type.replace('_dm', '').replace('send_', '').replace('_connect', '_connect');
-  const channelGuidance = CHANNEL_GUIDANCE[channelKey] ?? CHANNEL_GUIDANCE[step.action_type] ?? 'Professional, concise outreach message.';
+  const channelKey = step.action_type
+    .replace('_dm', '')
+    .replace('send_', '')
+    .replace('_connect', '_connect');
+  const channelGuidance =
+    CHANNEL_GUIDANCE[channelKey] ??
+    CHANNEL_GUIDANCE[step.action_type] ??
+    'Professional, concise outreach message.';
   const touchChannel = actionTypeToChannel(step.action_type);
 
   let enrichmentContext = '';
@@ -57,12 +75,14 @@ export async function composeMessage(
       const e = JSON.parse(prospect.enrichment);
       // Filter internal keys before exposing to the agent
       const public_e = Object.fromEntries(
-        Object.entries(e).filter(([k]) => !k.startsWith('__'))
+        Object.entries(e).filter(([k]) => !k.startsWith('__')),
       );
       if (Object.keys(public_e).length > 0) {
         enrichmentContext = `\n\nProspect enrichment data:\n${JSON.stringify(public_e, null, 2)}`;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const system = `You are a world-class B2B sales development representative writing outreach for a high-ticket offer.
@@ -110,7 +130,10 @@ Write the ${touchChannel} message now.`;
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+    const raw =
+      response.content[0].type === 'text'
+        ? response.content[0].text.trim()
+        : '';
     if (!raw) throw new Error('Empty response from BDR agent');
 
     // Extract subject line for email
@@ -124,11 +147,21 @@ Write the ${touchChannel} message now.`;
       }
     }
 
-    logger.debug({ prospectId: prospect.id, channel: touchChannel, step: step.step_number }, 'BDR agent composed message');
+    logger.debug(
+      {
+        prospectId: prospect.id,
+        channel: touchChannel,
+        step: step.step_number,
+      },
+      'BDR agent composed message',
+    );
 
     return { body, subject, channel: touchChannel };
   } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'BDR agent composition failed');
+    logger.error(
+      { err, prospectId: prospect.id },
+      'BDR agent composition failed',
+    );
     throw err;
   }
 }
@@ -137,14 +170,14 @@ Write the ${touchChannel} message now.`;
 
 function actionTypeToChannel(actionType: string): TouchChannel {
   const map: Record<string, TouchChannel> = {
-    send_email:       'email',
+    send_email: 'email',
     linkedin_connect: 'linkedin',
-    linkedin_dm:      'linkedin',
-    twitter_dm:       'twitter',
-    instagram_dm:     'instagram',
-    telegram_dm:      'telegram',
-    whatsapp_dm:      'whatsapp',
-    send_sms:         'sms',
+    linkedin_dm: 'linkedin',
+    twitter_dm: 'twitter',
+    instagram_dm: 'instagram',
+    telegram_dm: 'telegram',
+    whatsapp_dm: 'whatsapp',
+    send_sms: 'sms',
   };
   return map[actionType] ?? 'email';
 }

@@ -23,12 +23,12 @@ const ai = new Anthropic();
 // ── Channel length limits ─────────────────────────────────────────────────────
 
 const CHANNEL_CHAR_LIMITS: Partial<Record<TouchChannel, number>> = {
-  sms:       320,   // 2 SMS segments max
-  whatsapp:  4096,
-  telegram:  4096,
-  twitter:   10000, // DM limit
+  sms: 320, // 2 SMS segments max
+  whatsapp: 4096,
+  telegram: 4096,
+  twitter: 10000, // DM limit
   instagram: 1000,
-  linkedin:  300,   // connection request note limit; DMs are higher but keep it concise
+  linkedin: 300, // connection request note limit; DMs are higher but keep it concise
   // email: no hard limit enforced here
 };
 
@@ -75,32 +75,65 @@ export async function reviewMessage(
 ): Promise<GateResult> {
   const checks = {
     placeholder: checkPlaceholders(message),
-    spamWord:    checkSpamWords(message),
-    length:      checkLength(message, channel),
-    aiReview:    null as boolean | null,
+    spamWord: checkSpamWords(message),
+    length: checkLength(message, channel),
+    aiReview: null as boolean | null,
   };
 
   // Fast-fail on rule violations — no point burning an AI call
   if (!checks.placeholder) {
-    logger.warn({ channel, prospectName }, 'Quality gate FAIL: unfilled placeholder');
-    return { pass: false, reason: 'Message contains unfilled {{placeholder}} tokens', checks };
+    logger.warn(
+      { channel, prospectName },
+      'Quality gate FAIL: unfilled placeholder',
+    );
+    return {
+      pass: false,
+      reason: 'Message contains unfilled {{placeholder}} tokens',
+      checks,
+    };
   }
   if (!checks.spamWord) {
-    logger.warn({ channel, prospectName }, 'Quality gate FAIL: spam trigger word');
-    return { pass: false, reason: 'Message contains spam trigger phrase', checks };
+    logger.warn(
+      { channel, prospectName },
+      'Quality gate FAIL: spam trigger word',
+    );
+    return {
+      pass: false,
+      reason: 'Message contains spam trigger phrase',
+      checks,
+    };
   }
   if (!checks.length) {
     const limit = CHANNEL_CHAR_LIMITS[channel] ?? Infinity;
-    logger.warn({ channel, len: message.length, limit, prospectName }, 'Quality gate FAIL: too long');
-    return { pass: false, reason: `Message exceeds ${limit} character limit for ${channel}`, checks };
+    logger.warn(
+      { channel, len: message.length, limit, prospectName },
+      'Quality gate FAIL: too long',
+    );
+    return {
+      pass: false,
+      reason: `Message exceeds ${limit} character limit for ${channel}`,
+      checks,
+    };
   }
 
   // AI review (optional — disable with QUALITY_GATE_AI=false for speed/cost)
   if (process.env.QUALITY_GATE_AI !== 'false') {
-    checks.aiReview = await aiReview(message, channel, prospectName, campaignTone);
+    checks.aiReview = await aiReview(
+      message,
+      channel,
+      prospectName,
+      campaignTone,
+    );
     if (!checks.aiReview) {
-      logger.warn({ channel, prospectName }, 'Quality gate FAIL: AI review rejected');
-      return { pass: false, reason: 'AI review: message failed quality or personalization check', checks };
+      logger.warn(
+        { channel, prospectName },
+        'Quality gate FAIL: AI review rejected',
+      );
+      return {
+        pass: false,
+        reason: 'AI review: message failed quality or personalization check',
+        checks,
+      };
     }
   }
 
@@ -147,13 +180,18 @@ FAIL if any of these are true:
 - It is incoherent or has obvious errors
 
 PASS if the message is professional, personalized, and would not embarrass a thoughtful salesperson.`,
-      messages: [{
-        role: 'user',
-        content: `Channel: ${channel}\nProspect: ${prospectName}\n\nMessage:\n${message}`,
-      }],
+      messages: [
+        {
+          role: 'user',
+          content: `Channel: ${channel}\nProspect: ${prospectName}\n\nMessage:\n${message}`,
+        },
+      ],
     });
 
-    const verdict = response.content[0].type === 'text' ? response.content[0].text.trim() : 'FAIL: no response';
+    const verdict =
+      response.content[0].type === 'text'
+        ? response.content[0].text.trim()
+        : 'FAIL: no response';
     return verdict.startsWith('PASS');
   } catch (err) {
     // AI review failure → default to PASS to avoid blocking sends on API outages

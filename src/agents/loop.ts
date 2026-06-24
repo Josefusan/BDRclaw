@@ -33,11 +33,19 @@ import { logger } from '../logger.js';
 import { personalize } from '../campaign-runner.js';
 import { composeMessage } from './bdr-agent.js';
 import { reviewMessage } from './quality-gate.js';
-import type { Campaign, CampaignEnrollment, CampaignStep, TouchChannel } from '../bdr-types.js';
+import type {
+  Campaign,
+  CampaignEnrollment,
+  CampaignStep,
+  TouchChannel,
+} from '../bdr-types.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const LOOP_INTERVAL_MS = parseInt(process.env.BDR_LOOP_INTERVAL_MS ?? String(5 * 60 * 1000), 10);
+const LOOP_INTERVAL_MS = parseInt(
+  process.env.BDR_LOOP_INTERVAL_MS ?? String(5 * 60 * 1000),
+  10,
+);
 const TICK_LABEL = 'bdr-loop-tick';
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -53,15 +61,21 @@ export function startAgenticLoop(): void {
     return;
   }
   running = true;
-  logger.info({ intervalMs: LOOP_INTERVAL_MS }, 'BDRclaw agentic loop starting');
+  logger.info(
+    { intervalMs: LOOP_INTERVAL_MS },
+    'BDRclaw agentic loop starting',
+  );
 
   // Register graceful shutdown
   const stop = (signal: string) => {
-    logger.info({ signal }, 'Agentic loop: shutdown signal received, will stop after current tick');
+    logger.info(
+      { signal },
+      'Agentic loop: shutdown signal received, will stop after current tick',
+    );
     running = false;
   };
   process.on('SIGTERM', () => stop('SIGTERM'));
-  process.on('SIGINT',  () => stop('SIGINT'));
+  process.on('SIGINT', () => stop('SIGINT'));
 
   scheduleNextTick();
 }
@@ -85,13 +99,14 @@ async function runTick(): Promise<void> {
   logger.info({ tickId, ts: new Date().toISOString() }, `${TICK_LABEL}: start`);
 
   const enrollments = getActiveEnrollments();
-  logger.info({ tickId, count: enrollments.length }, `${TICK_LABEL}: processing enrollments`);
+  logger.info(
+    { tickId, count: enrollments.length },
+    `${TICK_LABEL}: processing enrollments`,
+  );
 
   // Process enrollments with per-prospect error isolation
   await Promise.allSettled(
-    enrollments.map((enrollment) =>
-      processEnrollmentSafe(enrollment, tickId),
-    ),
+    enrollments.map((enrollment) => processEnrollmentSafe(enrollment, tickId)),
   );
 
   logger.info({ tickId }, `${TICK_LABEL}: complete`);
@@ -108,13 +123,21 @@ async function processEnrollmentSafe(
   } catch (err) {
     // ISC-3: every error logged with structured fields — never swallowed
     logger.error(
-      { err, prospectId: enrollment.prospect_id, enrollmentId: enrollment.id, tickId, phase: 'enrollment' },
+      {
+        err,
+        prospectId: enrollment.prospect_id,
+        enrollmentId: enrollment.id,
+        tickId,
+        phase: 'enrollment',
+      },
       `${TICK_LABEL}: enrollment processing error (prospect isolated, loop continues)`,
     );
   }
 }
 
-async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> {
+async function processEnrollment(
+  enrollment: CampaignEnrollment,
+): Promise<void> {
   const campaign = getCampaignById(enrollment.campaign_id);
   if (!campaign || campaign.status !== 'active') return;
 
@@ -125,7 +148,10 @@ async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> 
   if (!prospect) return;
 
   // Skip unsubscribed/not_interested prospects
-  if (prospect.stage === 'unsubscribed' || prospect.stage === 'not_interested') {
+  if (
+    prospect.stage === 'unsubscribed' ||
+    prospect.stage === 'not_interested'
+  ) {
     updateEnrollment(enrollment.id, { status: 'paused' });
     return;
   }
@@ -134,7 +160,10 @@ async function processEnrollment(enrollment: CampaignEnrollment): Promise<void> 
   const nextStep = steps.find((s) => s.step_number > enrollment.current_step);
   if (!nextStep) {
     // All steps complete
-    updateEnrollment(enrollment.id, { status: 'completed', completed_at: new Date().toISOString() });
+    updateEnrollment(enrollment.id, {
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+    });
     return;
   }
 
@@ -164,7 +193,15 @@ async function sendStep(
   try {
     composed = await composeMessage(prospect, step, campaign);
   } catch (err) {
-    logger.error({ err, prospectId: prospect.id, step: step.step_number, phase: 'compose' }, 'BDR agent compose failed');
+    logger.error(
+      {
+        err,
+        prospectId: prospect.id,
+        step: step.step_number,
+        phase: 'compose',
+      },
+      'BDR agent compose failed',
+    );
     return;
   }
 
@@ -189,7 +226,11 @@ async function sendStep(
       subject: composed.subject,
     });
     logger.warn(
-      { prospectId: prospect.id, reason: gate.reason, channel: composed.channel },
+      {
+        prospectId: prospect.id,
+        reason: gate.reason,
+        channel: composed.channel,
+      },
       'Message blocked by quality gate — not sent',
     );
     return;
@@ -199,7 +240,10 @@ async function sendStep(
   const { getActionHandler } = await import('../bdr-brain.js');
   const handler = getActionHandler(step.action_type);
   if (!handler) {
-    logger.warn({ actionType: step.action_type }, 'No action handler registered — channel skill not installed');
+    logger.warn(
+      { actionType: step.action_type },
+      'No action handler registered — channel skill not installed',
+    );
     return;
   }
 
@@ -209,15 +253,19 @@ async function sendStep(
   try {
     await handler(enriched);
   } catch (err) {
-    logger.error({ err, prospectId: prospect.id, step: step.step_number, phase: 'send' }, 'Channel send failed');
+    logger.error(
+      { err, prospectId: prospect.id, step: step.step_number, phase: 'send' },
+      'Channel send failed',
+    );
     return;
   }
 
   // Advance enrollment
   const now = new Date().toISOString();
-  const isLast = step.step_number === (await import('../bdr-db.js'))
-    .getCampaignSteps(campaign.id)
-    .slice(-1)[0]?.step_number;
+  const isLast =
+    step.step_number ===
+    (await import('../bdr-db.js')).getCampaignSteps(campaign.id).slice(-1)[0]
+      ?.step_number;
 
   updateEnrollment(enrollment.id, {
     current_step: step.step_number,
@@ -237,7 +285,11 @@ async function sendStep(
   }
 
   logger.info(
-    { prospectId: prospect.id, step: step.step_number, channel: composed.channel },
+    {
+      prospectId: prospect.id,
+      step: step.step_number,
+      channel: composed.channel,
+    },
     'Campaign step sent via agentic loop',
   );
 }
@@ -266,6 +318,10 @@ function injectMessage(
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
-export function getLoopStatus(): { running: boolean; tickCount: number; intervalMs: number } {
+export function getLoopStatus(): {
+  running: boolean;
+  tickCount: number;
+  intervalMs: number;
+} {
   return { running, tickCount, intervalMs: LOOP_INTERVAL_MS };
 }

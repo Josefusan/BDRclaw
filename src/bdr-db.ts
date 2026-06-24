@@ -378,18 +378,24 @@ export function updateProspectStage(id: string, stage: string): void {
   // ISC-25: sync to all active CRM adapters on every stage change.
   // Import lazily to avoid circular dependency at module load time.
   // Failure does NOT block the stage change (ISC-27).
-  const prospect = db.prepare('SELECT * FROM bdr_prospects WHERE id = ?').get(id) as
-    | import('./bdr-types.js').BDRProspect
-    | undefined;
+  const prospect = db
+    .prepare('SELECT * FROM bdr_prospects WHERE id = ?')
+    .get(id) as import('./bdr-types.js').BDRProspect | undefined;
   if (prospect) {
-    import('./crm/registry.js').then(({ pushToCRMs }) => {
-      pushToCRMs({
-        type: 'stage_change',
-        prospect,
-        timestamp: new Date().toISOString(),
-        details: { newStage: stage },
-      }).catch(() => { /* logged inside pushToCRMs */ });
-    }).catch(() => { /* CRM registry not loaded yet */ });
+    import('./crm/registry.js')
+      .then(({ pushToCRMs }) => {
+        pushToCRMs({
+          type: 'stage_change',
+          prospect,
+          timestamp: new Date().toISOString(),
+          details: { newStage: stage },
+        }).catch(() => {
+          /* logged inside pushToCRMs */
+        });
+      })
+      .catch(() => {
+        /* CRM registry not loaded yet */
+      });
   }
 }
 
@@ -823,4 +829,61 @@ export function getPipelineStats(): PipelineStats {
         }
       : undefined,
   };
+}
+
+export interface ActivityItem {
+  id: string;
+  type: 'sent' | 'replied' | 'blocked' | 'hot_lead';
+  prospect_name: string;
+  prospect_company: string;
+  channel: string;
+  direction: string;
+  content_preview: string;
+  classification: string | null;
+  sent_at: string;
+}
+
+export function getRecentActivity(limit = 20): ActivityItem[] {
+  const rows = db
+    .prepare(
+      `
+    SELECT
+      t.id, t.channel, t.direction, t.status, t.reply_classification,
+      t.sent_at, SUBSTR(t.content, 1, 80) as content_preview,
+      p.name as prospect_name, p.company as prospect_company
+    FROM bdr_touches t
+    JOIN bdr_prospects p ON t.prospect_id = p.id
+    ORDER BY t.sent_at DESC
+    LIMIT ?
+  `,
+    )
+    .all(limit) as Array<{
+    id: string;
+    channel: string;
+    direction: string;
+    status: string;
+    reply_classification: string | null;
+    sent_at: string;
+    content_preview: string;
+    prospect_name: string;
+    prospect_company: string;
+  }>;
+
+  return rows.map((r) => {
+    let type: ActivityItem['type'] = 'sent';
+    if (r.direction === 'inbound') type = 'replied';
+    if (r.status === 'bounced') type = 'blocked';
+    if (r.reply_classification === 'interested') type = 'hot_lead';
+    return {
+      id: r.id,
+      type,
+      prospect_name: r.prospect_name,
+      prospect_company: r.prospect_company,
+      channel: r.channel,
+      direction: r.direction,
+      content_preview: r.content_preview,
+      classification: r.reply_classification,
+      sent_at: r.sent_at,
+    };
+  });
 }

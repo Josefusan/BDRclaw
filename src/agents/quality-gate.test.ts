@@ -46,7 +46,12 @@ describe('QualityGate — placeholder check (ISC-10)', () => {
   });
 
   it('fails for any {{...}} pattern regardless of content', async () => {
-    const result = await reviewMessage('Subject: {{subject_line}}', 'email', 'Test', 'casual');
+    const result = await reviewMessage(
+      'Subject: {{subject_line}}',
+      'email',
+      'Test',
+      'casual',
+    );
     expect(result.pass).toBe(false);
   });
 });
@@ -64,7 +69,12 @@ describe('QualityGate — spam word check (ISC-11)', () => {
   });
 
   it('fails for "click here" trigger', async () => {
-    const result = await reviewMessage('Click here to learn more.', 'email', 'Test', 'casual');
+    const result = await reviewMessage(
+      'Click here to learn more.',
+      'email',
+      'Test',
+      'casual',
+    );
     expect(result.pass).toBe(false);
   });
 
@@ -97,14 +107,24 @@ describe('QualityGate — channel length check (ISC-12)', () => {
 
   it('fails when LinkedIn message exceeds 300 chars', async () => {
     const longMsg = 'B'.repeat(301);
-    const result = await reviewMessage(longMsg, 'linkedin', 'Test User', 'casual');
+    const result = await reviewMessage(
+      longMsg,
+      'linkedin',
+      'Test User',
+      'casual',
+    );
     expect(result.pass).toBe(false);
     expect(result.checks.length).toBe(false);
   });
 
   it('does not enforce length limit for email channel', async () => {
     const longEmail = 'This is a very long email. '.repeat(100);
-    const result = await reviewMessage(longEmail, 'email', 'Test User', 'formal');
+    const result = await reviewMessage(
+      longEmail,
+      'email',
+      'Test User',
+      'formal',
+    );
     expect(result.checks.length).toBe(true);
   });
 });

@@ -16,10 +16,7 @@
 import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 
-import {
-  readProspectMemory,
-  writeProspectMemory,
-} from '../bdr-brain.js';
+import { readProspectMemory, writeProspectMemory } from '../bdr-brain.js';
 import {
   getProspectById,
   recordTouch,
@@ -28,7 +25,11 @@ import {
 } from '../bdr-db.js';
 import { pushToCRMs } from '../crm/registry.js';
 import { logger } from '../logger.js';
-import type { BDRProspect, ReplyClassification, TouchChannel } from '../bdr-types.js';
+import type {
+  BDRProspect,
+  ReplyClassification,
+  TouchChannel,
+} from '../bdr-types.js';
 import type { NewMessage } from '../types.js';
 
 const ai = new Anthropic();
@@ -54,9 +55,10 @@ Categories:
 - unsubscribe     (wants to be removed from outreach — any variant: "stop", "remove me", "unsubscribe", "don't contact me")
 - question        (asks a factual question about the product/offer)
 - out_of_office   (automated OOO reply or vacation notice)`,
-      messages: [{
-        role: 'user',
-        content: `Prospect: ${prospect.name} at ${prospect.company} (${prospect.title})
+      messages: [
+        {
+          role: 'user',
+          content: `Prospect: ${prospect.name} at ${prospect.company} (${prospect.title})
 Previous outreach context:
 ${memory.slice(-1000) || '(none)'}
 
@@ -64,22 +66,32 @@ Reply received:
 ${message}
 
 Classify:`,
-      }],
+        },
+      ],
     });
 
-    const raw = response.content[0].type === 'text'
-      ? response.content[0].text.trim().toLowerCase()
-      : 'not_interested';
+    const raw =
+      response.content[0].type === 'text'
+        ? response.content[0].text.trim().toLowerCase()
+        : 'not_interested';
 
     const valid: ReplyClassification[] = [
-      'interested', 'not_now', 'referral', 'not_interested',
-      'unsubscribe', 'question', 'out_of_office',
+      'interested',
+      'not_now',
+      'referral',
+      'not_interested',
+      'unsubscribe',
+      'question',
+      'out_of_office',
     ];
     return valid.includes(raw as ReplyClassification)
       ? (raw as ReplyClassification)
       : 'not_interested';
   } catch (err) {
-    logger.warn({ err, prospectId: prospect.id }, 'Reply classification failed — defaulting to not_now');
+    logger.warn(
+      { err, prospectId: prospect.id },
+      'Reply classification failed — defaulting to not_now',
+    );
     return 'not_now';
   }
 }
@@ -97,12 +109,16 @@ async function generateAnswer(
     system: `You are a helpful B2B sales rep answering a prospect's question.
 Be concise, honest, and helpful. End with a soft CTA to book a call.
 Value proposition context: ${valueProp}`,
-    messages: [{
-      role: 'user',
-      content: `Prospect ${prospect.name} at ${prospect.company} asked: "${question}"\n\nWrite a brief reply:`,
-    }],
+    messages: [
+      {
+        role: 'user',
+        content: `Prospect ${prospect.name} at ${prospect.company} asked: "${question}"\n\nWrite a brief reply:`,
+      },
+    ],
   });
-  return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+  return response.content[0].type === 'text'
+    ? response.content[0].text.trim()
+    : '';
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -126,12 +142,13 @@ export async function processReply(
   }
 
   const memory = readProspectMemory(prospectId);
-  const classification = await classifyReply(prospect, inboundMsg.content, memory);
-
-  logger.info(
-    { prospectId, classification, channel },
-    'Reply classified',
+  const classification = await classifyReply(
+    prospect,
+    inboundMsg.content,
+    memory,
   );
+
+  logger.info({ prospectId, classification, channel }, 'Reply classified');
 
   // Record inbound touch
   recordTouch({
@@ -149,7 +166,8 @@ export async function processReply(
   const ts = new Date().toISOString().slice(0, 10);
   writeProspectMemory(
     prospectId,
-    memory + `\n[${ts}] INBOUND (${channel}) — classified: ${classification}\n${inboundMsg.content}\n`,
+    memory +
+      `\n[${ts}] INBOUND (${channel}) — classified: ${classification}\n${inboundMsg.content}\n`,
   );
 
   let responded = false;
@@ -160,7 +178,10 @@ export async function processReply(
     case 'unsubscribe':
       updateProspectStage(prospectId, 'unsubscribed');
       // Pause all campaign enrollments for this prospect
-      logger.info({ prospectId }, 'Prospect unsubscribed — all outbound halted');
+      logger.info(
+        { prospectId },
+        'Prospect unsubscribed — all outbound halted',
+      );
       break;
 
     case 'interested': {
@@ -178,8 +199,13 @@ export async function processReply(
 
     case 'question': {
       updateProspectStage(prospectId, 'replied');
-      const vp = valueProp ?? process.env.DEFAULT_VALUE_PROPOSITION ?? 'our solution';
-      responseText = await generateAnswer(prospect, inboundMsg.content, vp).catch((err) => {
+      const vp =
+        valueProp ?? process.env.DEFAULT_VALUE_PROPOSITION ?? 'our solution';
+      responseText = await generateAnswer(
+        prospect,
+        inboundMsg.content,
+        vp,
+      ).catch((err) => {
         logger.warn({ err }, 'Answer generation failed');
         return '';
       });
@@ -209,7 +235,10 @@ export async function processReply(
 
     case 'referral':
       updateProspectStage(prospectId, 'replied');
-      logger.info({ prospectId, content: inboundMsg.content }, 'Referral received — add new prospect manually');
+      logger.info(
+        { prospectId, content: inboundMsg.content },
+        'Referral received — add new prospect manually',
+      );
       break;
   }
 
@@ -241,7 +270,11 @@ function fireHotLeadNotification(prospect: BDRProspect): void {
     import('https').then(({ default: https }) => {
       const payload = JSON.stringify({
         event: 'hot_lead',
-        prospect: { name: prospect.name, company: prospect.company, title: prospect.title },
+        prospect: {
+          name: prospect.name,
+          company: prospect.company,
+          title: prospect.title,
+        },
         ts: new Date().toISOString(),
       });
       const url = new URL(webhookUrl);
@@ -249,9 +282,14 @@ function fireHotLeadNotification(prospect: BDRProspect): void {
         hostname: url.hostname,
         path: url.pathname + url.search,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
       });
-      req.on('error', (err) => logger.warn({ err }, 'Hot-lead webhook delivery failed'));
+      req.on('error', (err) =>
+        logger.warn({ err }, 'Hot-lead webhook delivery failed'),
+      );
       req.write(payload);
       req.end();
     });

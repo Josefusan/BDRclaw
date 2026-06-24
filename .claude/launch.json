@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "landing",
+      "name": "bdrclaw-ui",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "-p", "4300", "."],
+      "runtimeArgs": ["serve", "-p", "4300", "public"],
       "port": 4300
     }
   ]
