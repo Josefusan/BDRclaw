@@ -58,6 +58,8 @@ export type ActionType =
   | 'send_email'
   | 'linkedin_connect'
   | 'linkedin_dm'
+  | 'twitter_dm'
+  | 'instagram_dm'
   | 'send_sms'
   | 'enrich'
   | 'update_crm'

@@ -1,0 +1,9 @@
+node_modules
+dist
+store
+.env
+.env.*
+!.env.example
+prospects/*/CLAUDE.md
+*.log
+.git

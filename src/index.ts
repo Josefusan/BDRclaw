@@ -60,6 +60,8 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { initBDRDatabase } from './bdr-db.js';
 import { startBDRBrain } from './bdr-brain.js';
 import './gmail-bdr-actions.js';
+import './linkedin-bdr-actions.js';
+import './twitter-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -597,6 +599,10 @@ async function main(): Promise<void> {
     }
     channels.push(channel);
     await channel.connect();
+    // Expose LinkedIn channel instance for linkedin-bdr-actions.ts
+    if (channel.name === 'linkedin') {
+      (globalThis as Record<string, unknown>).__bdrclaw_linkedin_channel = channel;
+    }
   }
   if (channels.length === 0) {
     logger.fatal('No channels connected');

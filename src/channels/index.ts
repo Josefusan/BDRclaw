@@ -6,8 +6,17 @@
 // gmail
 import './gmail.js';
 
+// instagram (warm-lead follow-up only — see channels/instagram.ts for constraints)
+import './instagram.js';
+
+// linkedin
+import './linkedin.js';
+
 // slack
 
 // telegram
+
+// twitter
+import './twitter.js';
 
 // whatsapp

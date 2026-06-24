@@ -182,6 +182,46 @@ export function upsertProspect(prospect: BDRProspect): void {
   );
 }
 
+/** Convenience wrapper that generates an id/timestamps and calls upsertProspect. */
+export function addProspect(fields: {
+  name: string;
+  company: string;
+  title: string;
+  email?: string | null;
+  linkedin_url?: string | null;
+  phone?: string | null;
+  source?: BDRProspect['source'];
+  tags?: string | null;
+}): BDRProspect {
+  const now = new Date().toISOString();
+  const slug = `${fields.name}-${fields.company}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  const id = `${slug}-${Date.now().toString(36)}`;
+  const prospect: BDRProspect = {
+    id,
+    name: fields.name,
+    company: fields.company,
+    title: fields.title,
+    email: fields.email ?? undefined,
+    linkedin_url: fields.linkedin_url ?? undefined,
+    phone: fields.phone ?? undefined,
+    stage: 'identified',
+    assigned_account_id: undefined,
+    source: fields.source ?? 'manual',
+    enrichment: undefined,
+    tags: fields.tags ?? undefined,
+    created_at: now,
+    updated_at: now,
+    last_touch_at: undefined,
+    next_action_at: undefined,
+    next_action_type: undefined,
+  };
+  upsertProspect(prospect);
+  return prospect;
+}
+
 export function getProspectById(id: string): BDRProspect | undefined {
   return db.prepare('SELECT * FROM bdr_prospects WHERE id = ?').get(id) as BDRProspect | undefined;
 }

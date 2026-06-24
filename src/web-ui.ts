@@ -12,15 +12,19 @@ import http from 'http';
 import { URL } from 'url';
 
 import {
+  addProspect,
   getAllAccounts,
   getAllProspects,
   getHotProspects,
   getPipelineStats,
+  getProspectById,
   getRecentBrainRuns,
   getRecentImportJobs,
   searchProspects,
+  updateProspectStage,
 } from './bdr-db.js';
 import { logger } from './logger.js';
+import type { ProspectStage } from './bdr-types.js';
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
@@ -122,6 +126,101 @@ function handleApi(
       return;
     }
 
+    // ── Prospect write endpoints ──────────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/prospects') {
+      readBody(req, (body) => {
+        try {
+          const data = JSON.parse(body);
+          if (!data.name || !data.company || !data.title) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'name, company, and title are required' }));
+            return;
+          }
+          const prospect = addProspect({
+            name: data.name,
+            company: data.company,
+            title: data.title,
+            email: data.email ?? null,
+            linkedin_url: data.linkedin_url ?? null,
+            phone: data.phone ?? null,
+            source: data.source ?? 'manual',
+            tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags ?? null),
+          });
+          res.writeHead(201);
+          res.end(JSON.stringify(prospect));
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        }
+      });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/prospects/import') {
+      readBody(req, (body) => {
+        try {
+          const rows: Array<Record<string, string>> = JSON.parse(body);
+          if (!Array.isArray(rows)) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Body must be an array of prospect objects' }));
+            return;
+          }
+          const imported: number[] = [];
+          const errors: Array<{ row: number; error: string }> = [];
+          rows.forEach((row, i) => {
+            if (!row.name || !row.company || !row.title) {
+              errors.push({ row: i, error: 'name, company, title required' });
+              return;
+            }
+            try {
+              addProspect({
+                name: row.name,
+                company: row.company,
+                title: row.title,
+                email: row.email ?? null,
+                linkedin_url: row.linkedin_url ?? row.linkedin ?? null,
+                phone: row.phone ?? null,
+                source: 'csv_import',
+                tags: row.tags ?? null,
+              });
+              imported.push(i);
+            } catch (e) {
+              errors.push({ row: i, error: String(e) });
+            }
+          });
+          json(res, { imported: imported.length, errors });
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        }
+      });
+      return;
+    }
+
+    if (method === 'PATCH' && pathname.startsWith('/api/prospects/')) {
+      const id = pathname.split('/')[3];
+      readBody(req, (body) => {
+        try {
+          const data = JSON.parse(body);
+          const prospect = getProspectById(id);
+          if (!prospect) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ error: 'Prospect not found' }));
+            return;
+          }
+          if (data.stage) {
+            updateProspectStage(id, data.stage as ProspectStage);
+          }
+          json(res, { ok: true });
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid request' }));
+        }
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Unknown API route' }));
   } catch (err) {
@@ -134,6 +233,12 @@ function handleApi(
 function json(res: http.ServerResponse, data: unknown): void {
   res.writeHead(200);
   res.end(JSON.stringify(data));
+}
+
+function readBody(req: http.IncomingMessage, cb: (body: string) => void): void {
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', () => cb(Buffer.concat(chunks).toString('utf-8')));
 }
 
 // ── Server Startup ────────────────────────────────────────────────────────────
