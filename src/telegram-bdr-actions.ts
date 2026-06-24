@@ -23,9 +23,12 @@ import {
   registerActionHandler,
   writeProspectMemory,
 } from './bdr-brain.js';
-import { recordTouch, updateProspectNextAction, updateProspectStage } from './bdr-db.js';
+import {
+  recordTouch,
+  updateProspectNextAction,
+  updateProspectStage,
+} from './bdr-db.js';
 import { chatIdToJid } from './channels/telegram.js';
-import { getChannelFactory } from './channels/registry.js';
 import type { BDRProspect } from './bdr-types.js';
 import { TelegramChannel } from './channels/telegram.js';
 import { logger } from './logger.js';
@@ -41,7 +44,9 @@ registerActionHandler('telegram_dm', async (prospect: BDRProspect) => {
   if (prospect.enrichment) {
     try {
       const e = JSON.parse(prospect.enrichment);
-      chatId = e.telegram_chat_id ? parseInt(String(e.telegram_chat_id), 10) : null;
+      chatId = e.telegram_chat_id
+        ? parseInt(String(e.telegram_chat_id), 10)
+        : null;
     } catch {
       // not JSON
     }
@@ -94,13 +99,19 @@ registerActionHandler('telegram_dm', async (prospect: BDRProspect) => {
       updateProspectStage(prospect.id, 'follow_up');
     }
 
-    logger.info({ prospectId: prospect.id, chatId, touchCount }, 'Telegram DM sent');
+    logger.info(
+      { prospectId: prospect.id, chatId, touchCount },
+      'Telegram DM sent',
+    );
   } catch (err) {
     logger.error({ err, prospectId: prospect.id }, 'telegram_dm failed');
   }
 });
 
-function buildTelegramMessage(prospect: BDRProspect, touchCount: number): string {
+function buildTelegramMessage(
+  prospect: BDRProspect,
+  touchCount: number,
+): string {
   const firstName = prospect.name.split(' ')[0];
   const senderName = process.env.GMAIL_SENDER_NAME ?? 'the team';
 

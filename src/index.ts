@@ -65,6 +65,11 @@ import './sms-bdr-actions.js';
 import './telegram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
+import { registerCampaignRunner } from './campaign-runner.js';
+// CRM adapters — self-register when env vars are set
+import './crm/hubspot.js';
+import './crm/salesforce.js';
+import './crm/monday.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -485,6 +490,7 @@ async function main(): Promise<void> {
   loadState();
   startWebUI();
   startBDRBrain();
+  registerCampaignRunner();
   restoreRemoteControl();
 
   // Start credential proxy (containers route API calls through this)

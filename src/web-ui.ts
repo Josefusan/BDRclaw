@@ -8,24 +8,39 @@
  * Uses Node's built-in http module — no external web framework needed.
  */
 
+import crypto from 'crypto';
 import http from 'http';
 import { URL } from 'url';
 
 import {
   addProspect,
+  enrollProspect,
+  getActiveEnrollments,
   getAllAccounts,
   getAllProspects,
+  getCampaignById,
+  getCampaignSteps,
+  getBuilderSession,
   getHotProspects,
   getPipelineStats,
   getProspectById,
   getRecentBrainRuns,
   getRecentImportJobs,
+  listCampaigns,
   searchProspects,
   updateProspectStage,
+  upsertCampaign,
 } from './bdr-db.js';
+import {
+  builderChat,
+  editCampaign,
+  enrollAllActiveProspects,
+  startBuilderSession,
+} from './campaign-builder.js';
+import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
-import type { ProspectStage } from './bdr-types.js';
+import type { CampaignStatus, ProspectStage } from './bdr-types.js';
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
@@ -245,6 +260,135 @@ function handleApi(
           res.end(JSON.stringify({ error: 'Invalid request' }));
         }
       });
+      return;
+    }
+
+    // ── Campaign endpoints ────────────────────────────────────────────────────
+
+    if (method === 'GET' && pathname === '/api/campaigns') {
+      json(res, listCampaigns());
+      return;
+    }
+
+    if (method === 'GET' && pathname.startsWith('/api/campaigns/') && !pathname.includes('/builder')) {
+      const id = pathname.split('/')[3];
+      const campaign = getCampaignById(id);
+      if (!campaign) { res.writeHead(404); res.end(JSON.stringify({ error: 'Campaign not found' })); return; }
+      json(res, { ...campaign, steps: getCampaignSteps(id) });
+      return;
+    }
+
+    if (method === 'PATCH' && pathname.startsWith('/api/campaigns/')) {
+      const id = pathname.split('/')[3];
+      const campaign = getCampaignById(id);
+      if (!campaign) { res.writeHead(404); res.end(JSON.stringify({ error: 'Campaign not found' })); return; }
+      readBody(req, (body) => {
+        try {
+          const data = JSON.parse(body) as Partial<{ status: CampaignStatus; name: string }>;
+          upsertCampaign({ ...campaign, ...data, updated_at: new Date().toISOString() });
+          // Auto-enroll active prospects when activating a campaign
+          if (data.status === 'active') {
+            const enrolled = enrollAllActiveProspects(id);
+            json(res, { ok: true, enrolled });
+          } else {
+            json(res, { ok: true });
+          }
+        } catch { res.writeHead(400); res.end(JSON.stringify({ error: 'Invalid body' })); }
+      });
+      return;
+    }
+
+    // Campaign enrollments
+    if (method === 'GET' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/enrollments')) {
+      const id = pathname.split('/')[3];
+      json(res, getActiveEnrollments(id));
+      return;
+    }
+
+    if (method === 'POST' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/enroll')) {
+      const id = pathname.split('/')[3];
+      readBody(req, (body) => {
+        try {
+          const { prospect_id } = JSON.parse(body);
+          if (!prospect_id) { res.writeHead(400); res.end(JSON.stringify({ error: 'prospect_id required' })); return; }
+          enrollProspect({
+            id: crypto.randomUUID(),
+            campaign_id: id,
+            prospect_id,
+            current_step: 0,
+            status: 'active',
+            enrolled_at: new Date().toISOString(),
+          });
+          json(res, { ok: true });
+        } catch { res.writeHead(400); res.end(JSON.stringify({ error: 'Invalid body' })); }
+      });
+      return;
+    }
+
+    // ── Agentic campaign builder ──────────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/campaigns/builder/start') {
+      const session = startBuilderSession();
+      json(res, {
+        sessionId: session.id,
+        message: "Hi! I'm BDR Claude. I'll build your entire outreach campaign in a few questions.\n\nFirst — what product or service are you selling, and in one sentence, who is it for?",
+      });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/campaigns/builder/chat') {
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { sessionId, message } = JSON.parse(body);
+            if (!sessionId || !message) { res.writeHead(400); res.end(JSON.stringify({ error: 'sessionId and message required' })); return; }
+            const result = await builderChat(sessionId, message);
+            json(res, result);
+          } catch (err) {
+            logger.error({ err }, 'Campaign builder chat error');
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    if (method === 'POST' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/edit')) {
+      const id = pathname.split('/')[3];
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { instruction } = JSON.parse(body);
+            if (!instruction) { res.writeHead(400); res.end(JSON.stringify({ error: 'instruction required' })); return; }
+            const result = await editCampaign(id, instruction);
+            json(res, result);
+          } catch (err) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    // ── CRM endpoints ─────────────────────────────────────────────────────────
+
+    if (method === 'GET' && pathname === '/api/crm/adapters') {
+      json(res, getCRMAdapters().map((a) => ({ name: a.name })));
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/crm/pull') {
+      (async () => {
+        try {
+          const contacts = await pullFromCRMs();
+          json(res, { contacts, count: contacts.length });
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      })();
       return;
     }
 

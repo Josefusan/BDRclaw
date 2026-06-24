@@ -8,6 +8,10 @@ import type {
   BDRBrainRun,
   BDRProspect,
   BDRTouch,
+  BuilderSession,
+  Campaign,
+  CampaignEnrollment,
+  CampaignStep,
   ImportJob,
   PipelineStats,
 } from './bdr-types.js';
@@ -109,6 +113,58 @@ function createSchema(database: Database.Database): void {
       error          TEXT,
       created_at     TEXT NOT NULL,
       completed_at   TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS bdr_campaigns (
+      id                 TEXT PRIMARY KEY,
+      name               TEXT NOT NULL,
+      description        TEXT,
+      icp_description    TEXT,
+      value_proposition  TEXT,
+      tone               TEXT NOT NULL DEFAULT 'friendly',
+      jitter_minutes     INTEGER NOT NULL DEFAULT 30,
+      status             TEXT NOT NULL DEFAULT 'draft',
+      created_at         TEXT NOT NULL,
+      updated_at         TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS bdr_campaign_steps (
+      id           TEXT PRIMARY KEY,
+      campaign_id  TEXT NOT NULL,
+      step_number  INTEGER NOT NULL,
+      action_type  TEXT NOT NULL,
+      delay_days   INTEGER NOT NULL DEFAULT 0,
+      subject      TEXT,
+      template     TEXT NOT NULL,
+      condition    TEXT NOT NULL DEFAULT 'always',
+      FOREIGN KEY (campaign_id) REFERENCES bdr_campaigns(id) ON DELETE CASCADE,
+      UNIQUE (campaign_id, step_number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_step_campaign ON bdr_campaign_steps(campaign_id);
+
+    CREATE TABLE IF NOT EXISTS bdr_campaign_enrollments (
+      id            TEXT PRIMARY KEY,
+      campaign_id   TEXT NOT NULL,
+      prospect_id   TEXT NOT NULL,
+      current_step  INTEGER NOT NULL DEFAULT 0,
+      status        TEXT NOT NULL DEFAULT 'active',
+      enrolled_at   TEXT NOT NULL,
+      last_step_at  TEXT,
+      completed_at  TEXT,
+      FOREIGN KEY (campaign_id)  REFERENCES bdr_campaigns(id),
+      FOREIGN KEY (prospect_id)  REFERENCES bdr_prospects(id),
+      UNIQUE (campaign_id, prospect_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_enrollment_prospect  ON bdr_campaign_enrollments(prospect_id);
+    CREATE INDEX IF NOT EXISTS idx_enrollment_campaign  ON bdr_campaign_enrollments(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_enrollment_status    ON bdr_campaign_enrollments(status);
+
+    CREATE TABLE IF NOT EXISTS bdr_builder_sessions (
+      id          TEXT PRIMARY KEY,
+      messages    TEXT NOT NULL DEFAULT '[]',
+      draft       TEXT,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
     );
   `);
 }
@@ -527,6 +583,137 @@ export function getRecentImportJobs(limit = 10): ImportJob[] {
   return db
     .prepare('SELECT * FROM bdr_import_jobs ORDER BY created_at DESC LIMIT ?')
     .all(limit) as ImportJob[];
+}
+
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+
+export function upsertCampaign(campaign: Campaign): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO bdr_campaigns
+      (id, name, description, icp_description, value_proposition,
+       tone, jitter_minutes, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    campaign.id,
+    campaign.name,
+    campaign.description ?? null,
+    campaign.icp_description ?? null,
+    campaign.value_proposition ?? null,
+    campaign.tone,
+    campaign.jitter_minutes,
+    campaign.status,
+    campaign.created_at,
+    campaign.updated_at,
+  );
+}
+
+export function getCampaignById(id: string): Campaign | undefined {
+  return db.prepare('SELECT * FROM bdr_campaigns WHERE id = ?').get(id) as Campaign | undefined;
+}
+
+export function listCampaigns(): Campaign[] {
+  return db.prepare('SELECT * FROM bdr_campaigns ORDER BY updated_at DESC').all() as Campaign[];
+}
+
+export function upsertCampaignStep(step: CampaignStep): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO bdr_campaign_steps
+      (id, campaign_id, step_number, action_type, delay_days, subject, template, condition)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    step.id,
+    step.campaign_id,
+    step.step_number,
+    step.action_type,
+    step.delay_days,
+    step.subject ?? null,
+    step.template,
+    step.condition,
+  );
+}
+
+export function getCampaignSteps(campaignId: string): CampaignStep[] {
+  return db.prepare(
+    'SELECT * FROM bdr_campaign_steps WHERE campaign_id = ? ORDER BY step_number ASC',
+  ).all(campaignId) as CampaignStep[];
+}
+
+export function deleteCampaignSteps(campaignId: string): void {
+  db.prepare('DELETE FROM bdr_campaign_steps WHERE campaign_id = ?').run(campaignId);
+}
+
+export function enrollProspect(enrollment: CampaignEnrollment): void {
+  db.prepare(`
+    INSERT OR IGNORE INTO bdr_campaign_enrollments
+      (id, campaign_id, prospect_id, current_step, status, enrolled_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    enrollment.id,
+    enrollment.campaign_id,
+    enrollment.prospect_id,
+    enrollment.current_step,
+    enrollment.status,
+    enrollment.enrolled_at,
+  );
+}
+
+export function getEnrollment(campaignId: string, prospectId: string): CampaignEnrollment | undefined {
+  return db.prepare(
+    'SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND prospect_id = ?',
+  ).get(campaignId, prospectId) as CampaignEnrollment | undefined;
+}
+
+export function getActiveEnrollments(campaignId?: string): CampaignEnrollment[] {
+  if (campaignId) {
+    return db.prepare(
+      "SELECT * FROM bdr_campaign_enrollments WHERE campaign_id = ? AND status = 'active'",
+    ).all(campaignId) as CampaignEnrollment[];
+  }
+  return db.prepare(
+    "SELECT * FROM bdr_campaign_enrollments WHERE status = 'active'",
+  ).all() as CampaignEnrollment[];
+}
+
+export function updateEnrollment(id: string, updates: Partial<CampaignEnrollment>): void {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (updates.current_step !== undefined) { fields.push('current_step = ?'); values.push(updates.current_step); }
+  if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+  if (updates.last_step_at !== undefined) { fields.push('last_step_at = ?'); values.push(updates.last_step_at); }
+  if (updates.completed_at !== undefined) { fields.push('completed_at = ?'); values.push(updates.completed_at); }
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE bdr_campaign_enrollments SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+}
+
+// ── Builder Sessions ──────────────────────────────────────────────────────────
+
+export function upsertBuilderSession(session: BuilderSession): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO bdr_builder_sessions
+      (id, messages, draft, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    session.id,
+    JSON.stringify(session.messages),
+    session.draft ? JSON.stringify(session.draft) : null,
+    session.created_at,
+    session.updated_at,
+  );
+}
+
+export function getBuilderSession(id: string): BuilderSession | undefined {
+  const row = db.prepare('SELECT * FROM bdr_builder_sessions WHERE id = ?').get(id) as
+    | { id: string; messages: string; draft: string | null; created_at: string; updated_at: string }
+    | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    messages: JSON.parse(row.messages),
+    draft: row.draft ? JSON.parse(row.draft) : undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
 // ── Aggregated Stats ──────────────────────────────────────────────────────────

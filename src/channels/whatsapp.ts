@@ -22,10 +22,18 @@ import twilio from 'twilio';
 
 import { logger } from '../logger.js';
 import { registerWebhook } from '../webhook-registry.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
-const DAILY_MSG_LIMIT = parseInt(process.env.WHATSAPP_DAILY_MSG_LIMIT ?? '100', 10);
+const DAILY_MSG_LIMIT = parseInt(
+  process.env.WHATSAPP_DAILY_MSG_LIMIT ?? '100',
+  10,
+);
 
 // ── WhatsApp Channel ──────────────────────────────────────────────────────────
 
@@ -51,10 +59,16 @@ export class WhatsAppChannel implements Channel {
       // Verify credentials by fetching account info
       const account = await this.client.api.accounts(this.accountSid).fetch();
       this.connected = true;
-      logger.info({ accountName: account.friendlyName }, 'WhatsApp (Twilio) channel connected');
+      logger.info(
+        { accountName: account.friendlyName },
+        'WhatsApp (Twilio) channel connected',
+      );
       this.registerInboundWebhook();
     } catch (err) {
-      logger.error({ err }, 'WhatsApp channel connect failed — check Twilio credentials');
+      logger.error(
+        { err },
+        'WhatsApp channel connect failed — check Twilio credentials',
+      );
     }
   }
 
@@ -63,7 +77,9 @@ export class WhatsAppChannel implements Channel {
     this.resetDailyCountsIfNeeded();
 
     if (this.msgsSentToday >= DAILY_MSG_LIMIT) {
-      throw new Error(`WhatsApp daily message limit reached (${DAILY_MSG_LIMIT})`);
+      throw new Error(
+        `WhatsApp daily message limit reached (${DAILY_MSG_LIMIT})`,
+      );
     }
 
     const to = jidToE164WhatsApp(jid);
@@ -75,7 +91,10 @@ export class WhatsAppChannel implements Channel {
     });
 
     this.msgsSentToday++;
-    logger.info({ jid, msgsSentToday: this.msgsSentToday }, 'WhatsApp message sent');
+    logger.info(
+      { jid, msgsSentToday: this.msgsSentToday },
+      'WhatsApp message sent',
+    );
   }
 
   isConnected(): boolean {
@@ -98,12 +117,14 @@ export class WhatsAppChannel implements Channel {
       // Parse Twilio's URL-encoded form body
       const params = Object.fromEntries(
         body.split('&').map((pair) => {
-          const [k, v] = pair.split('=').map((s) => decodeURIComponent(s.replace(/\+/g, ' ')));
+          const [k, v] = pair
+            .split('=')
+            .map((s) => decodeURIComponent(s.replace(/\+/g, ' ')));
           return [k, v];
         }),
       );
 
-      const from = params['From'] ?? '';       // "whatsapp:+15551234567"
+      const from = params['From'] ?? ''; // "whatsapp:+15551234567"
       const msgBody = params['Body'] ?? '';
       const msgSid = params['MessageSid'] ?? `wa-${Date.now()}`;
 
@@ -125,7 +146,13 @@ export class WhatsAppChannel implements Channel {
       };
 
       this.onMessage(jid, msg);
-      this.onChatMetadata(jid, msg.timestamp, msg.sender_name, 'whatsapp', false);
+      this.onChatMetadata(
+        jid,
+        msg.timestamp,
+        msg.sender_name,
+        'whatsapp',
+        false,
+      );
 
       // Twilio expects a 200 + empty TwiML or body to acknowledge
       res.writeHead(200, { 'Content-Type': 'text/xml' });
@@ -148,7 +175,9 @@ export class WhatsAppChannel implements Channel {
 
 export function e164WhatsAppToJid(twilioFrom: string): string {
   // Twilio sends "whatsapp:+15551234567" — normalize to our JID
-  const normalized = twilioFrom.startsWith('whatsapp:') ? twilioFrom : `whatsapp:${twilioFrom}`;
+  const normalized = twilioFrom.startsWith('whatsapp:')
+    ? twilioFrom
+    : `whatsapp:${twilioFrom}`;
   return normalized;
 }
 
@@ -166,6 +195,14 @@ registerChannel('whatsapp', (opts) => {
 
   if (!sid || !token || !from) return null;
 
-  const fromFormatted = from.startsWith('whatsapp:') ? from : `whatsapp:${from}`;
-  return new WhatsAppChannel(sid, token, fromFormatted, opts.onMessage, opts.onChatMetadata);
+  const fromFormatted = from.startsWith('whatsapp:')
+    ? from
+    : `whatsapp:${from}`;
+  return new WhatsAppChannel(
+    sid,
+    token,
+    fromFormatted,
+    opts.onMessage,
+    opts.onChatMetadata,
+  );
 });

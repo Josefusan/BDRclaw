@@ -18,11 +18,19 @@
 import https from 'https';
 
 import { logger } from '../logger.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
 const POLL_TIMEOUT_SECONDS = 30; // long-poll window per request
-const DAILY_MSG_LIMIT = parseInt(process.env.TELEGRAM_DAILY_MSG_LIMIT ?? '200', 10);
+const DAILY_MSG_LIMIT = parseInt(
+  process.env.TELEGRAM_DAILY_MSG_LIMIT ?? '200',
+  10,
+);
 
 // ── Telegram Bot API helpers ──────────────────────────────────────────────────
 
@@ -34,7 +42,10 @@ function apiCall<T>(token: string, method: string, body?: unknown): Promise<T> {
       path: `/bot${token}/${method}`,
       method: payload ? 'POST' : 'GET',
       headers: payload
-        ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+        ? {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+          }
         : undefined,
     };
     const req = https.request(options, (res) => {
@@ -43,7 +54,8 @@ function apiCall<T>(token: string, method: string, body?: unknown): Promise<T> {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          if (!parsed.ok) reject(new Error(parsed.description ?? 'Telegram API error'));
+          if (!parsed.ok)
+            reject(new Error(parsed.description ?? 'Telegram API error'));
           else resolve(parsed.result as T);
         } catch (e) {
           reject(e);
@@ -60,8 +72,19 @@ interface TgUpdate {
   update_id: number;
   message?: {
     message_id: number;
-    chat: { id: number; first_name?: string; last_name?: string; username?: string; type: string };
-    from?: { id: number; first_name?: string; last_name?: string; username?: string };
+    chat: {
+      id: number;
+      first_name?: string;
+      last_name?: string;
+      username?: string;
+      type: string;
+    };
+    from?: {
+      id: number;
+      first_name?: string;
+      last_name?: string;
+      username?: string;
+    };
     text?: string;
     date: number;
   };
@@ -85,13 +108,19 @@ export class TelegramChannel implements Channel {
 
   async connect(): Promise<void> {
     try {
-      const me = await apiCall<{ id: number; username: string }>(this.token, 'getMe');
+      const me = await apiCall<{ id: number; username: string }>(
+        this.token,
+        'getMe',
+      );
       this.connected = true;
       this.running = true;
       logger.info({ username: me.username }, 'Telegram channel connected');
       this.pollLoop();
     } catch (err) {
-      logger.error({ err }, 'Telegram channel connect failed — check TELEGRAM_BOT_TOKEN');
+      logger.error(
+        { err },
+        'Telegram channel connect failed — check TELEGRAM_BOT_TOKEN',
+      );
     }
   }
 
@@ -100,7 +129,9 @@ export class TelegramChannel implements Channel {
     this.resetDailyCountsIfNeeded();
 
     if (this.msgsSentToday >= DAILY_MSG_LIMIT) {
-      throw new Error(`Telegram daily message limit reached (${DAILY_MSG_LIMIT})`);
+      throw new Error(
+        `Telegram daily message limit reached (${DAILY_MSG_LIMIT})`,
+      );
     }
 
     const chatId = jidToChatId(jid);
@@ -111,7 +142,10 @@ export class TelegramChannel implements Channel {
     });
 
     this.msgsSentToday++;
-    logger.info({ jid, msgsSentToday: this.msgsSentToday }, 'Telegram message sent');
+    logger.info(
+      { jid, msgsSentToday: this.msgsSentToday },
+      'Telegram message sent',
+    );
   }
 
   isConnected(): boolean {
@@ -146,9 +180,10 @@ export class TelegramChannel implements Channel {
           const chat = update.message.chat;
           const from = update.message.from;
           const jid = chatIdToJid(chat.id);
-          const senderName = [from?.first_name, from?.last_name].filter(Boolean).join(' ')
-            || from?.username
-            || String(from?.id ?? chat.id);
+          const senderName =
+            [from?.first_name, from?.last_name].filter(Boolean).join(' ') ||
+            from?.username ||
+            String(from?.id ?? chat.id);
 
           const msg: NewMessage = {
             id: `tg-${update.update_id}`,
@@ -161,7 +196,13 @@ export class TelegramChannel implements Channel {
           };
 
           this.onMessage(jid, msg);
-          this.onChatMetadata(jid, msg.timestamp, senderName, 'telegram', false);
+          this.onChatMetadata(
+            jid,
+            msg.timestamp,
+            senderName,
+            'telegram',
+            false,
+          );
         }
       } catch (err) {
         if (this.running) {

@@ -25,7 +25,12 @@ import twilio from 'twilio';
 
 import { logger } from '../logger.js';
 import { registerWebhook } from '../webhook-registry.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
 const DAILY_MSG_LIMIT = parseInt(process.env.SMS_DAILY_MSG_LIMIT ?? '100', 10);
@@ -53,10 +58,16 @@ export class SMSChannel implements Channel {
     try {
       const account = await this.client.api.accounts(this.accountSid).fetch();
       this.connected = true;
-      logger.info({ accountName: account.friendlyName }, 'SMS (Twilio) channel connected');
+      logger.info(
+        { accountName: account.friendlyName },
+        'SMS (Twilio) channel connected',
+      );
       this.registerInboundWebhook();
     } catch (err) {
-      logger.error({ err }, 'SMS channel connect failed — check Twilio credentials');
+      logger.error(
+        { err },
+        'SMS channel connect failed — check Twilio credentials',
+      );
     }
   }
 
@@ -100,12 +111,14 @@ export class SMSChannel implements Channel {
     registerWebhook('/webhooks/sms', (req, res, body) => {
       const params = Object.fromEntries(
         body.split('&').map((pair) => {
-          const [k, v] = pair.split('=').map((s) => decodeURIComponent(s.replace(/\+/g, ' ')));
+          const [k, v] = pair
+            .split('=')
+            .map((s) => decodeURIComponent(s.replace(/\+/g, ' ')));
           return [k, v];
         }),
       );
 
-      const from = params['From'] ?? '';       // "+15551234567"
+      const from = params['From'] ?? ''; // "+15551234567"
       const msgBody = params['Body'] ?? '';
       const msgSid = params['MessageSid'] ?? `sms-${Date.now()}`;
 
@@ -167,7 +180,9 @@ registerChannel('sms', (opts) => {
   const from = process.env.TWILIO_PHONE_NUMBER;
 
   if (!sid || !token || !from) {
-    logger.warn('SMS channel: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER required');
+    logger.warn(
+      'SMS channel: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER required',
+    );
     return null;
   }
 

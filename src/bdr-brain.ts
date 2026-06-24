@@ -295,6 +295,10 @@ export function registerActionHandler(
   logger.info({ actionType }, 'BDR Brain: action handler registered');
 }
 
+export function getActionHandler(actionType: string): ActionHandler | undefined {
+  return actionHandlers.get(actionType as ActionType);
+}
+
 async function dispatchAction(prospect: BDRProspect): Promise<void> {
   const actionType = prospect.next_action_type;
   if (!actionType) return;

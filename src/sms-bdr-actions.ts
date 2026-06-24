@@ -18,7 +18,11 @@ import {
   registerActionHandler,
   writeProspectMemory,
 } from './bdr-brain.js';
-import { recordTouch, updateProspectNextAction, updateProspectStage } from './bdr-db.js';
+import {
+  recordTouch,
+  updateProspectNextAction,
+  updateProspectStage,
+} from './bdr-db.js';
 import { e164ToJid } from './channels/sms.js';
 import { SMSChannel } from './channels/sms.js';
 import type { BDRProspect } from './bdr-types.js';
@@ -32,13 +36,18 @@ function getSMSChannel(): SMSChannel | null {
 
 registerActionHandler('send_sms', async (prospect: BDRProspect) => {
   if (!prospect.phone) {
-    logger.warn({ prospectId: prospect.id }, 'send_sms: no phone number on prospect');
+    logger.warn(
+      { prospectId: prospect.id },
+      'send_sms: no phone number on prospect',
+    );
     return;
   }
 
   const channel = getSMSChannel();
   if (!channel) {
-    logger.warn('send_sms: SMS channel not connected — check SMS_ENABLED and Twilio credentials');
+    logger.warn(
+      'send_sms: SMS channel not connected — check SMS_ENABLED and Twilio credentials',
+    );
     return;
   }
 
@@ -47,7 +56,10 @@ registerActionHandler('send_sms', async (prospect: BDRProspect) => {
 
   // Never send more than 2 unsolicited SMS — respect opt-out laws (TCPA in US)
   if (touchCount >= 2) {
-    logger.info({ prospectId: prospect.id }, 'send_sms: max SMS touches reached, skipping');
+    logger.info(
+      { prospectId: prospect.id },
+      'send_sms: max SMS touches reached, skipping',
+    );
     updateProspectStage(prospect.id, 'not_interested');
     return;
   }
@@ -79,7 +91,10 @@ registerActionHandler('send_sms', async (prospect: BDRProspect) => {
     updateProspectNextAction(prospect.id, next.toISOString(), 'send_sms');
     updateProspectStage(prospect.id, 'follow_up');
 
-    logger.info({ prospectId: prospect.id, phone: prospect.phone, touchCount }, 'SMS sent');
+    logger.info(
+      { prospectId: prospect.id, phone: prospect.phone, touchCount },
+      'SMS sent',
+    );
   } catch (err) {
     logger.error({ err, prospectId: prospect.id }, 'send_sms failed');
   }

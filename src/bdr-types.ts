@@ -34,7 +34,15 @@ export const ACTIVE_STAGES: ProspectStage[] = [
 
 export type AccountType = 'gmail' | 'outlook' | 'linkedin';
 export type AccountStatus = 'active' | 'paused' | 'error' | 'unconfigured';
-export type TouchChannel = 'email' | 'linkedin' | 'sms' | 'slack' | 'telegram' | 'whatsapp' | 'twitter' | 'instagram';
+export type TouchChannel =
+  | 'email'
+  | 'linkedin'
+  | 'sms'
+  | 'slack'
+  | 'telegram'
+  | 'whatsapp'
+  | 'twitter'
+  | 'instagram';
 export type TouchDirection = 'outbound' | 'inbound';
 export type TouchStatus =
   | 'sent'
@@ -155,6 +163,63 @@ export interface ImportJob {
   error?: string;
   created_at: string;
   completed_at?: string;
+}
+
+// ── Campaign ──────────────────────────────────────────────────────────────────
+
+export type CampaignStatus =
+  | 'draft'
+  | 'active'
+  | 'paused'
+  | 'completed'
+  | 'archived';
+
+export type CampaignTone = 'formal' | 'casual' | 'friendly' | 'direct';
+
+export type StepCondition = 'always' | 'no_reply' | 'opened' | 'clicked';
+
+export interface Campaign {
+  id: string;
+  name: string;
+  description?: string;
+  icp_description?: string;   // "VP Sales at B2B SaaS, 50-500 employees"
+  value_proposition?: string;
+  tone: CampaignTone;
+  jitter_minutes: number;     // random ± delay per send for human-likeness
+  status: CampaignStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignStep {
+  id: string;
+  campaign_id: string;
+  step_number: number;
+  action_type: ActionType;
+  delay_days: number;         // days after previous step
+  subject?: string;           // email subject
+  template: string;           // message with {{firstName}}, {{company}}, {{title}}
+  condition: StepCondition;   // when to run this step
+}
+
+export interface CampaignEnrollment {
+  id: string;
+  campaign_id: string;
+  prospect_id: string;
+  current_step: number;
+  status: 'active' | 'paused' | 'completed' | 'unsubscribed';
+  enrolled_at: string;
+  last_step_at?: string;
+  completed_at?: string;
+}
+
+// Conversational campaign builder session (stored in DB between requests)
+export interface BuilderSession {
+  id: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  draft?: Partial<Campaign & { steps: Omit<CampaignStep, 'id' | 'campaign_id'>[] }>;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── Pipeline Stats (for dashboard API) ───────────────────────────────────────

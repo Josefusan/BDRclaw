@@ -28,6 +28,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
     "@types/node-telegram-bot-api": "^0.64.15",
     "better-sqlite3": "^11.8.1",
     "cron-parser": "^5.5.0",
