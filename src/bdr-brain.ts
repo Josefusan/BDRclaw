@@ -28,7 +28,11 @@ import {
   updateProspectStage,
 } from './bdr-db.js';
 import { logger } from './logger.js';
-import type { ActionType, BDRProspect, ReplyClassification } from './bdr-types.js';
+import type {
+  ActionType,
+  BDRProspect,
+  ReplyClassification,
+} from './bdr-types.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +60,10 @@ function scheduleNextRun(): void {
   if (next <= now) next.setDate(next.getDate() + 1);
   const ms = next.getTime() - now.getTime();
   const hh = Math.floor(ms / 3600000);
-  logger.info({ nextRun: next.toISOString(), inHours: hh }, 'BDR Brain next run scheduled');
+  logger.info(
+    { nextRun: next.toISOString(), inHours: hh },
+    'BDR Brain next run scheduled',
+  );
   setTimeout(() => {
     runCycle().catch((err) => logger.error({ err }, 'BDR Brain cycle failed'));
     scheduleNextRun();
@@ -91,7 +98,9 @@ export async function runCycle(): Promise<void> {
 
       if (result.isHotLead && result.hotSignal) {
         hotLeadsFound++;
-        hotLeadNames.push(`${prospect.name} @ ${prospect.company} (${result.hotSignal})`);
+        hotLeadNames.push(
+          `${prospect.name} @ ${prospect.company} (${result.hotSignal})`,
+        );
         logger.info(
           { prospectId: prospect.id, signal: result.hotSignal },
           'Hot lead detected',
@@ -100,7 +109,9 @@ export async function runCycle(): Promise<void> {
 
       if (result.nextAction) {
         actionsQueued++;
-        actionLines.push(`${prospect.name} @ ${prospect.company}: ${result.nextAction}`);
+        actionLines.push(
+          `${prospect.name} @ ${prospect.company}: ${result.nextAction}`,
+        );
         // Schedule the action for now (immediate) if no date set
         if (!prospect.next_action_at) {
           updateProspectNextAction(
@@ -121,7 +132,13 @@ export async function runCycle(): Promise<void> {
     }
 
     // 5. Generate and log summary
-    const summary = buildSummary(prospectsReviewed, actionsQueued, hotLeadsFound, hotLeadNames, actionLines);
+    const summary = buildSummary(
+      prospectsReviewed,
+      actionsQueued,
+      hotLeadsFound,
+      hotLeadNames,
+      actionLines,
+    );
     logger.info({ summary: summary.slice(0, 200) }, 'BDR Brain daily summary');
 
     completeBrainRun(runId, {
@@ -179,12 +196,26 @@ function evaluateProspect(prospect: BDRProspect): EvaluationResult {
 // ── Hot Signal Detection ──────────────────────────────────────────────────────
 
 const HOT_KEYWORDS = [
-  'pricing', 'price', 'cost', 'budget', 'quote',
-  'demo', 'trial', 'proof of concept', 'poc',
-  'contract', 'agreement', 'sign',
-  'timeline', 'when can we', 'how soon',
-  'evaluation', 'shortlist', 'vendor',
-  'decision', 'next steps',
+  'pricing',
+  'price',
+  'cost',
+  'budget',
+  'quote',
+  'demo',
+  'trial',
+  'proof of concept',
+  'poc',
+  'contract',
+  'agreement',
+  'sign',
+  'timeline',
+  'when can we',
+  'how soon',
+  'evaluation',
+  'shortlist',
+  'vendor',
+  'decision',
+  'next steps',
 ];
 
 function detectHotSignal(prospect: BDRProspect, memory: string): string | null {
@@ -222,13 +253,18 @@ function determineNextAction(
 
     case 'outreach_sent':
       if (daysSinceTouch === null) return undefined;
-      if (daysSinceTouch >= FOLLOW_UP_DAYS.outreach_sent_to_follow_up) return 'send_email';
+      if (daysSinceTouch >= FOLLOW_UP_DAYS.outreach_sent_to_follow_up)
+        return 'send_email';
       if (daysSinceTouch >= 5) return 'linkedin_connect';
-      if (daysSinceTouch >= FOLLOW_UP_DAYS.follow_up_to_breakup) return 'send_email'; // breakup
+      if (daysSinceTouch >= FOLLOW_UP_DAYS.follow_up_to_breakup)
+        return 'send_email'; // breakup
       return undefined;
 
     case 'follow_up':
-      if (daysSinceTouch !== null && daysSinceTouch >= FOLLOW_UP_DAYS.follow_up_to_linkedin) {
+      if (
+        daysSinceTouch !== null &&
+        daysSinceTouch >= FOLLOW_UP_DAYS.follow_up_to_linkedin
+      ) {
         return 'linkedin_dm';
       }
       return undefined;
@@ -251,7 +287,10 @@ function determineNextAction(
 type ActionHandler = (prospect: BDRProspect) => Promise<void>;
 const actionHandlers = new Map<string, ActionHandler>();
 
-export function registerActionHandler(actionType: ActionType, handler: ActionHandler): void {
+export function registerActionHandler(
+  actionType: ActionType,
+  handler: ActionHandler,
+): void {
   actionHandlers.set(actionType, handler);
   logger.info({ actionType }, 'BDR Brain: action handler registered');
 }
@@ -278,7 +317,10 @@ async function dispatchAction(prospect: BDRProspect): Promise<void> {
     await handler(prospect);
     logger.info({ prospectId: prospect.id, actionType }, 'Action dispatched');
   } catch (err) {
-    logger.error({ prospectId: prospect.id, actionType, err }, 'Action dispatch failed');
+    logger.error(
+      { prospectId: prospect.id, actionType, err },
+      'Action dispatch failed',
+    );
   }
 }
 
@@ -327,9 +369,13 @@ ${prospect.next_action_at ? `${prospect.next_action_at} — ${prospect.next_acti
 _(add notes here)_
 
 ## Enrichment
-${Object.keys(enrichment).length > 0
-  ? Object.entries(enrichment).map(([k, v]) => `- **${k}:** ${v}`).join('\n')
-  : '_(pending enrichment)_'}
+${
+  Object.keys(enrichment).length > 0
+    ? Object.entries(enrichment)
+        .map(([k, v]) => `- **${k}:** ${v}`)
+        .join('\n')
+    : '_(pending enrichment)_'
+}
 `;
   writeProspectMemory(prospect.id, content);
 }
@@ -357,7 +403,10 @@ export function applyReplyClassification(
   const newStage = stageMap[classification];
   if (newStage) {
     updateProspectStage(prospectId, newStage);
-    logger.info({ prospectId, classification, newStage }, 'Reply classified, stage updated');
+    logger.info(
+      { prospectId, classification, newStage },
+      'Reply classified, stage updated',
+    );
   }
 }
 
@@ -375,7 +424,10 @@ function buildSummary(
   actions: string[],
 ): string {
   const date = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
   const lines = [
     `## BDR Brain — Daily Summary — ${date}`,

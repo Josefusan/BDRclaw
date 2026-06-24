@@ -277,7 +277,9 @@ function parseMail(msg: gmail_v1.Schema$Message): {
 
   const subject = hdr('Subject') || '(no subject)';
   const rawDate = hdr('Date');
-  const date = rawDate ? new Date(rawDate).toISOString() : new Date().toISOString();
+  const date = rawDate
+    ? new Date(rawDate).toISOString()
+    : new Date().toISOString();
   const body = extractPlainText(msg.payload);
 
   return { from, fromName, subject, body, date, threadId: msg.threadId ?? '' };

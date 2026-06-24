@@ -17,18 +17,34 @@
 import fs from 'fs';
 import path from 'path';
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from 'playwright';
 
 import { STORE_DIR } from '../config.js';
 import { logger } from '../logger.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
 const SESSION_FILE = path.join(STORE_DIR, 'linkedin-session.json');
 const REPLY_POLL_MS = 10 * 60 * 1000; // 10 minutes
 
-const DAILY_DM_LIMIT = parseInt(process.env.LINKEDIN_DAILY_DM_LIMIT ?? '50', 10);
-const DAILY_CONN_LIMIT = parseInt(process.env.LINKEDIN_DAILY_CONNECTION_LIMIT ?? '20', 10);
+const DAILY_DM_LIMIT = parseInt(
+  process.env.LINKEDIN_DAILY_DM_LIMIT ?? '50',
+  10,
+);
+const DAILY_CONN_LIMIT = parseInt(
+  process.env.LINKEDIN_DAILY_CONNECTION_LIMIT ?? '20',
+  10,
+);
 
 // ── LinkedIn Channel ──────────────────────────────────────────────────────────
 
@@ -49,7 +65,9 @@ export class LinkedInChannel implements Channel {
 
   async connect(): Promise<void> {
     if (!fs.existsSync(SESSION_FILE)) {
-      logger.warn('LinkedIn session file not found. Run: npm run linkedin-auth');
+      logger.warn(
+        'LinkedIn session file not found. Run: npm run linkedin-auth',
+      );
       return;
     }
 
@@ -99,14 +117,19 @@ export class LinkedInChannel implements Channel {
     }
   }
 
-  async sendConnectionRequest(profileUrl: string, note?: string): Promise<void> {
+  async sendConnectionRequest(
+    profileUrl: string,
+    note?: string,
+  ): Promise<void> {
     if (!this.connected || !this.context) {
       throw new Error('LinkedIn channel not connected');
     }
     this.resetDailyCountsIfNeeded();
 
     if (this.connectionsSentToday >= DAILY_CONN_LIMIT) {
-      throw new Error(`LinkedIn daily connection limit reached (${DAILY_CONN_LIMIT})`);
+      throw new Error(
+        `LinkedIn daily connection limit reached (${DAILY_CONN_LIMIT})`,
+      );
     }
 
     const page = await this.context.newPage();
@@ -143,7 +166,10 @@ export class LinkedInChannel implements Channel {
     if (!this.context) return false;
     const page = await this.context.newPage();
     try {
-      await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.goto('https://www.linkedin.com/feed/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000,
+      });
       const url = page.url();
       return !url.includes('/login') && !url.includes('/uas/login');
     } catch {
@@ -172,9 +198,13 @@ export class LinkedInChannel implements Channel {
       await page.waitForTimeout(2000);
 
       // Find unread conversation threads
-      const threads = await page.locator('.msg-conversation-listitem__link').all();
+      const threads = await page
+        .locator('.msg-conversation-listitem__link')
+        .all();
       for (const thread of threads.slice(0, 10)) {
-        const hasUnread = await thread.locator('.msg-conversation-listitem__unread-count').count();
+        const hasUnread = await thread
+          .locator('.msg-conversation-listitem__unread-count')
+          .count();
         if (!hasUnread) continue;
 
         await thread.click();
@@ -236,31 +266,53 @@ export class LinkedInChannel implements Channel {
 
 // ── Automation helpers ────────────────────────────────────────────────────────
 
-async function sendLinkedInDM(page: Page, profileUrl: string, text: string): Promise<void> {
-  await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+async function sendLinkedInDM(
+  page: Page,
+  profileUrl: string,
+  text: string,
+): Promise<void> {
+  await page.goto(profileUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: 20000,
+  });
   await page.waitForTimeout(1500);
 
   // Click "Message" button on the profile page
-  const messageBtn = page.locator('button:has-text("Message"), a:has-text("Message")').first();
+  const messageBtn = page
+    .locator('button:has-text("Message"), a:has-text("Message")')
+    .first();
   await messageBtn.waitFor({ timeout: 8000 });
   await messageBtn.click();
   await page.waitForTimeout(1000);
 
   // Type the message in the compose box
-  const composeBox = page.locator('.msg-form__contenteditable, [data-placeholder="Write a message…"]').first();
+  const composeBox = page
+    .locator(
+      '.msg-form__contenteditable, [data-placeholder="Write a message…"]',
+    )
+    .first();
   await composeBox.waitFor({ timeout: 8000 });
   await composeBox.click();
   await composeBox.type(text, { delay: 30 });
   await page.waitForTimeout(500);
 
   // Send
-  const sendBtn = page.locator('button.msg-form__send-button, button[aria-label="Send"]').first();
+  const sendBtn = page
+    .locator('button.msg-form__send-button, button[aria-label="Send"]')
+    .first();
   await sendBtn.click();
   await page.waitForTimeout(1000);
 }
 
-async function sendConnectionRequest(page: Page, profileUrl: string, note?: string): Promise<void> {
-  await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+async function sendConnectionRequest(
+  page: Page,
+  profileUrl: string,
+  note?: string,
+): Promise<void> {
+  await page.goto(profileUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: 20000,
+  });
   await page.waitForTimeout(1500);
 
   const connectBtn = page.locator('button:has-text("Connect")').first();
@@ -280,7 +332,9 @@ async function sendConnectionRequest(page: Page, profileUrl: string, note?: stri
     }
   }
 
-  const sendBtn = page.locator('button:has-text("Send"), button:has-text("Send without a note")').first();
+  const sendBtn = page
+    .locator('button:has-text("Send"), button:has-text("Send without a note")')
+    .first();
   await sendBtn.click();
   await page.waitForTimeout(800);
 }

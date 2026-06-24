@@ -24,6 +24,7 @@ import {
   updateProspectStage,
 } from './bdr-db.js';
 import { logger } from './logger.js';
+import { getWebhookHandler } from './webhook-registry.js';
 import type { ProspectStage } from './bdr-types.js';
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
@@ -31,10 +32,7 @@ const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
-function route(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): void {
+function route(req: http.IncomingMessage, res: http.ServerResponse): void {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
   const method = req.method ?? 'GET';
   const pathname = url.pathname;
@@ -61,6 +59,21 @@ function route(
   if (pathname.startsWith('/api/')) {
     handleApi(method, pathname, url, req, res);
     return;
+  }
+
+  // Twilio / channel webhooks — body must be read before dispatching
+  if (pathname.startsWith('/webhooks/')) {
+    const handler = getWebhookHandler(pathname);
+    if (handler) {
+      readBody(req, (body) => {
+        Promise.resolve(handler(req, res, body)).catch((err) => {
+          logger.error({ err, pathname }, 'Webhook handler error');
+          res.writeHead(500);
+          res.end('Internal error');
+        });
+      });
+      return;
+    }
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -122,7 +135,11 @@ function handleApi(
     }
 
     if (method === 'GET' && pathname === '/api/health') {
-      json(res, { status: 'ok', uptime: process.uptime(), ts: new Date().toISOString() });
+      json(res, {
+        status: 'ok',
+        uptime: process.uptime(),
+        ts: new Date().toISOString(),
+      });
       return;
     }
 
@@ -134,7 +151,11 @@ function handleApi(
           const data = JSON.parse(body);
           if (!data.name || !data.company || !data.title) {
             res.writeHead(400);
-            res.end(JSON.stringify({ error: 'name, company, and title are required' }));
+            res.end(
+              JSON.stringify({
+                error: 'name, company, and title are required',
+              }),
+            );
             return;
           }
           const prospect = addProspect({
@@ -145,7 +166,9 @@ function handleApi(
             linkedin_url: data.linkedin_url ?? null,
             phone: data.phone ?? null,
             source: data.source ?? 'manual',
-            tags: Array.isArray(data.tags) ? data.tags.join(',') : (data.tags ?? null),
+            tags: Array.isArray(data.tags)
+              ? data.tags.join(',')
+              : (data.tags ?? null),
           });
           res.writeHead(201);
           res.end(JSON.stringify(prospect));
@@ -163,7 +186,11 @@ function handleApi(
           const rows: Array<Record<string, string>> = JSON.parse(body);
           if (!Array.isArray(rows)) {
             res.writeHead(400);
-            res.end(JSON.stringify({ error: 'Body must be an array of prospect objects' }));
+            res.end(
+              JSON.stringify({
+                error: 'Body must be an array of prospect objects',
+              }),
+            );
             return;
           }
           const imported: number[] = [];
@@ -246,11 +273,17 @@ function readBody(req: http.IncomingMessage, cb: (body: string) => void): void {
 export function startWebUI(): http.Server {
   const server = http.createServer(route);
   server.listen(WEB_PORT, WEB_HOST, () => {
-    logger.info({ url: `http://${WEB_HOST}:${WEB_PORT}` }, 'BDRclaw Web UI running');
+    logger.info(
+      { url: `http://${WEB_HOST}:${WEB_PORT}` },
+      'BDRclaw Web UI running',
+    );
   });
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
-      logger.warn({ port: WEB_PORT }, 'Web UI port in use — dashboard unavailable');
+      logger.warn(
+        { port: WEB_PORT },
+        'Web UI port in use — dashboard unavailable',
+      );
     } else {
       logger.error({ err }, 'Web UI server error');
     }

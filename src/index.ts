@@ -61,6 +61,8 @@ import { initBDRDatabase } from './bdr-db.js';
 import { startBDRBrain } from './bdr-brain.js';
 import './gmail-bdr-actions.js';
 import './linkedin-bdr-actions.js';
+import './sms-bdr-actions.js';
+import './telegram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
@@ -599,10 +601,11 @@ async function main(): Promise<void> {
     }
     channels.push(channel);
     await channel.connect();
-    // Expose LinkedIn channel instance for linkedin-bdr-actions.ts
-    if (channel.name === 'linkedin') {
-      (globalThis as Record<string, unknown>).__bdrclaw_linkedin_channel = channel;
-    }
+    // Expose channel instances for BDR action handlers
+    const g = globalThis as Record<string, unknown>;
+    if (channel.name === 'linkedin') g.__bdrclaw_linkedin_channel = channel;
+    if (channel.name === 'telegram') g.__bdrclaw_telegram_channel = channel;
+    if (channel.name === 'sms') g.__bdrclaw_sms_channel = channel;
   }
   if (channels.length === 0) {
     logger.fatal('No channels connected');

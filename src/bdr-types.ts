@@ -34,9 +34,15 @@ export const ACTIVE_STAGES: ProspectStage[] = [
 
 export type AccountType = 'gmail' | 'outlook' | 'linkedin';
 export type AccountStatus = 'active' | 'paused' | 'error' | 'unconfigured';
-export type TouchChannel = 'email' | 'linkedin' | 'sms' | 'slack';
+export type TouchChannel = 'email' | 'linkedin' | 'sms' | 'slack' | 'telegram' | 'whatsapp' | 'twitter' | 'instagram';
 export type TouchDirection = 'outbound' | 'inbound';
-export type TouchStatus = 'sent' | 'delivered' | 'opened' | 'clicked' | 'replied' | 'bounced';
+export type TouchStatus =
+  | 'sent'
+  | 'delivered'
+  | 'opened'
+  | 'clicked'
+  | 'replied'
+  | 'bounced';
 
 export type ProspectSource =
   | 'manual'
@@ -60,6 +66,8 @@ export type ActionType =
   | 'linkedin_dm'
   | 'twitter_dm'
   | 'instagram_dm'
+  | 'telegram_dm'
+  | 'whatsapp_dm'
   | 'send_sms'
   | 'enrich'
   | 'update_crm'

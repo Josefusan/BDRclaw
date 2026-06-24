@@ -16,7 +16,11 @@ import {
   registerActionHandler,
   writeProspectMemory,
 } from './bdr-brain.js';
-import { recordTouch, updateProspectNextAction, updateProspectStage } from './bdr-db.js';
+import {
+  recordTouch,
+  updateProspectNextAction,
+  updateProspectStage,
+} from './bdr-db.js';
 import type { BDRProspect } from './bdr-types.js';
 import { logger } from './logger.js';
 
@@ -32,7 +36,8 @@ registerActionHandler('twitter_dm', async (prospect: BDRProspect) => {
     try {
       const enrichment = JSON.parse(prospect.enrichment);
       twitterUserId = enrichment.twitter_user_id ?? null;
-      twitterUsername = enrichment.twitter_handle ?? enrichment.twitter_username ?? null;
+      twitterUsername =
+        enrichment.twitter_handle ?? enrichment.twitter_username ?? null;
     } catch {
       // enrichment not JSON
     }
@@ -56,10 +61,15 @@ registerActionHandler('twitter_dm', async (prospect: BDRProspect) => {
   // Resolve username → userId if we only have a handle
   if (!twitterUserId && twitterUsername) {
     try {
-      const user = await client.v2.userByUsername(twitterUsername.replace(/^@/, ''));
+      const user = await client.v2.userByUsername(
+        twitterUsername.replace(/^@/, ''),
+      );
       twitterUserId = user.data.id;
     } catch (err) {
-      logger.warn({ err, twitterUsername }, 'twitter_dm: could not resolve user ID');
+      logger.warn(
+        { err, twitterUsername },
+        'twitter_dm: could not resolve user ID',
+      );
       return;
     }
   }
@@ -74,7 +84,7 @@ registerActionHandler('twitter_dm', async (prospect: BDRProspect) => {
     recordTouch({
       id: crypto.randomUUID(),
       prospect_id: prospect.id,
-      channel: 'linkedin',
+      channel: 'twitter',
       direction: 'outbound',
       content: message,
       status: 'sent',
@@ -96,7 +106,10 @@ registerActionHandler('twitter_dm', async (prospect: BDRProspect) => {
       updateProspectStage(prospect.id, 'follow_up');
     }
 
-    logger.info({ prospectId: prospect.id, twitterUserId, touchCount }, 'Twitter DM sent');
+    logger.info(
+      { prospectId: prospect.id, twitterUserId, touchCount },
+      'Twitter DM sent',
+    );
   } catch (err) {
     logger.error({ err, prospectId: prospect.id }, 'twitter_dm failed');
   }

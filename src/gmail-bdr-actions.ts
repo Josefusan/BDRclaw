@@ -36,7 +36,10 @@ import { STORE_DIR } from './config.js';
 // Thread tracking: prospect_id → { threadId, lastMessageId }
 const THREADS_FILE = path.join(STORE_DIR, 'gmail-threads.json');
 
-function loadThreads(): Record<string, { threadId: string; messageId: string }> {
+function loadThreads(): Record<
+  string,
+  { threadId: string; messageId: string }
+> {
   try {
     return JSON.parse(fs.readFileSync(THREADS_FILE, 'utf-8'));
   } catch {
@@ -44,7 +47,11 @@ function loadThreads(): Record<string, { threadId: string; messageId: string }> 
   }
 }
 
-function saveThread(prospectId: string, threadId: string, messageId: string): void {
+function saveThread(
+  prospectId: string,
+  threadId: string,
+  messageId: string,
+): void {
   const threads = loadThreads();
   threads[prospectId] = { threadId, messageId };
   fs.mkdirSync(STORE_DIR, { recursive: true });
@@ -89,11 +96,7 @@ registerActionHandler('send_email', async (prospect: BDRProspect) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(6, 0, 0, 0);
-    updateProspectNextAction(
-      prospect.id,
-      tomorrow.toISOString(),
-      'send_email',
-    );
+    updateProspectNextAction(prospect.id, tomorrow.toISOString(), 'send_email');
     return;
   }
 
@@ -148,11 +151,7 @@ registerActionHandler('send_email', async (prospect: BDRProspect) => {
     // Schedule next follow-up (3 days out)
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + 3);
-    updateProspectNextAction(
-      prospect.id,
-      nextDate.toISOString(),
-      'send_email',
-    );
+    updateProspectNextAction(prospect.id, nextDate.toISOString(), 'send_email');
 
     // Update prospect memory
     appendSequenceEntry(
@@ -187,7 +186,9 @@ registerActionHandler('classify_reply', async (prospect: BDRProspect) => {
   }
 
   // Extract the most recent reply from prospect memory
-  const replyMatch = memory.match(/\*\*Reply:\*\*\s*([\s\S]*?)(?=\n##|\n\*\*|$)/);
+  const replyMatch = memory.match(
+    /\*\*Reply:\*\*\s*([\s\S]*?)(?=\n##|\n\*\*|$)/,
+  );
   const replyText = replyMatch?.[1]?.trim() ?? '';
 
   const classification = classifyReply(replyText);
@@ -199,10 +200,7 @@ registerActionHandler('classify_reply', async (prospect: BDRProspect) => {
   const updatedMemory = memory + `\n${tag}\n`;
   writeProspectMemory(prospect.id, updatedMemory);
 
-  logger.info(
-    { prospectId: prospect.id, classification },
-    'Reply classified',
-  );
+  logger.info({ prospectId: prospect.id, classification }, 'Reply classified');
 });
 
 // ── send_meeting_link ─────────────────────────────────────────────────────────
@@ -263,7 +261,10 @@ registerActionHandler('send_meeting_link', async (prospect: BDRProspect) => {
     updateProspectStage(prospect.id, 'meeting_booked');
     logger.info({ prospectId: prospect.id }, 'Meeting link sent');
   } catch (err) {
-    logger.error({ prospectId: prospect.id, err }, 'Failed to send meeting link');
+    logger.error(
+      { prospectId: prospect.id, err },
+      'Failed to send meeting link',
+    );
   }
 });
 
@@ -274,7 +275,7 @@ const POSITIVE_SIGNALS = [
   'interested',
   'sure',
   'sounds good',
-  'let\'s chat',
+  "let's chat",
   "let's connect",
   'tell me more',
   'more info',
@@ -299,7 +300,7 @@ const NEGATIVE_SIGNALS = [
   'unsubscribe',
   'stop emailing',
   'take me off',
-  'don\'t contact',
+  "don't contact",
   "don't email",
   'not the right time',
   'not a fit',
@@ -327,7 +328,7 @@ const REFERRAL_SIGNALS = [
   'right person',
   'in charge of',
   'handles this',
-  'cc\'d',
+  "cc'd",
   'forwarded',
 ];
 

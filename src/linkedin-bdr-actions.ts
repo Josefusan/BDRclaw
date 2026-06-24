@@ -17,7 +17,12 @@ import {
   registerActionHandler,
   writeProspectMemory,
 } from './bdr-brain.js';
-import { getProspectById, recordTouch, updateProspectNextAction, updateProspectStage } from './bdr-db.js';
+import {
+  getProspectById,
+  recordTouch,
+  updateProspectNextAction,
+  updateProspectStage,
+} from './bdr-db.js';
 import type { BDRProspect } from './bdr-types.js';
 import { LinkedInChannel, profileUrlToJid } from './channels/linkedin.js';
 import { getChannelFactory } from './channels/registry.js';
@@ -39,7 +44,10 @@ function getLinkedInChannel(): LinkedInChannel | null {
 
 registerActionHandler('linkedin_connect', async (prospect: BDRProspect) => {
   if (!prospect.linkedin_url) {
-    logger.warn({ prospectId: prospect.id }, 'linkedin_connect: no linkedin_url on prospect');
+    logger.warn(
+      { prospectId: prospect.id },
+      'linkedin_connect: no linkedin_url on prospect',
+    );
     return;
   }
 
@@ -69,10 +77,17 @@ registerActionHandler('linkedin_connect', async (prospect: BDRProspect) => {
     // Schedule follow-up DM in 3 days if they accept
     const followUp = new Date();
     followUp.setDate(followUp.getDate() + 3);
-    updateProspectNextAction(prospect.id, followUp.toISOString(), 'linkedin_dm');
+    updateProspectNextAction(
+      prospect.id,
+      followUp.toISOString(),
+      'linkedin_dm',
+    );
 
     updateProspectStage(prospect.id, 'outreach_sent');
-    logger.info({ prospectId: prospect.id }, 'LinkedIn connection request sent');
+    logger.info(
+      { prospectId: prospect.id },
+      'LinkedIn connection request sent',
+    );
   } catch (err) {
     logger.error({ err, prospectId: prospect.id }, 'linkedin_connect failed');
   }
@@ -82,7 +97,10 @@ registerActionHandler('linkedin_connect', async (prospect: BDRProspect) => {
 
 registerActionHandler('linkedin_dm', async (prospect: BDRProspect) => {
   if (!prospect.linkedin_url) {
-    logger.warn({ prospectId: prospect.id }, 'linkedin_dm: no linkedin_url on prospect');
+    logger.warn(
+      { prospectId: prospect.id },
+      'linkedin_dm: no linkedin_url on prospect',
+    );
     return;
   }
 

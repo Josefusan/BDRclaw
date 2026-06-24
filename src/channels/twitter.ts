@@ -15,11 +15,19 @@
 import { TwitterApi, type TwitterApiReadWrite } from 'twitter-api-v2';
 
 import { logger } from '../logger.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
 const REPLY_POLL_MS = 5 * 60 * 1000; // 5 minutes
-const DAILY_DM_LIMIT = parseInt(process.env.TWITTER_DAILY_DM_LIMIT ?? '100', 10);
+const DAILY_DM_LIMIT = parseInt(
+  process.env.TWITTER_DAILY_DM_LIMIT ?? '100',
+  10,
+);
 
 // ── Twitter Channel ───────────────────────────────────────────────────────────
 
@@ -48,10 +56,16 @@ export class TwitterChannel implements Channel {
     try {
       const me = await this.client.v2.me();
       this.connected = true;
-      logger.info({ userId: me.data.id, username: me.data.username }, 'Twitter channel connected');
+      logger.info(
+        { userId: me.data.id, username: me.data.username },
+        'Twitter channel connected',
+      );
       this.startReplyPolling();
     } catch (err) {
-      logger.error({ err }, 'Twitter channel connect failed — check API keys and permissions');
+      logger.error(
+        { err },
+        'Twitter channel connect failed — check API keys and permissions',
+      );
     }
   }
 
@@ -69,7 +83,10 @@ export class TwitterChannel implements Channel {
     await this.client.v2.sendDmToParticipant(recipientId, { text });
 
     this.dmsSentToday++;
-    logger.info({ jid, recipientId, dmsSentToday: this.dmsSentToday }, 'Twitter DM sent');
+    logger.info(
+      { jid, recipientId, dmsSentToday: this.dmsSentToday },
+      'Twitter DM sent',
+    );
   }
 
   isConnected(): boolean {
@@ -104,7 +121,13 @@ export class TwitterChannel implements Channel {
 
       // listDmEvents returns a paginator — fetch first page only
       const paginator = await this.client.v2.listDmEvents({
-        'dm_event.fields': ['id', 'text', 'created_at', 'sender_id', 'dm_conversation_id'],
+        'dm_event.fields': [
+          'id',
+          'text',
+          'created_at',
+          'sender_id',
+          'dm_conversation_id',
+        ],
         event_types: 'MessageCreate',
         max_results: 50,
       } as Parameters<typeof this.client.v2.listDmEvents>[0]);

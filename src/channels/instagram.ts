@@ -28,12 +28,20 @@
 import https from 'https';
 
 import { logger } from '../logger.js';
-import type { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import type {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerChannel } from './registry.js';
 
 const GRAPH_API = 'https://graph.instagram.com/v20.0';
 const REPLY_POLL_MS = 5 * 60 * 1000; // 5 minutes
-const DAILY_DM_LIMIT = parseInt(process.env.INSTAGRAM_DAILY_DM_LIMIT ?? '50', 10);
+const DAILY_DM_LIMIT = parseInt(
+  process.env.INSTAGRAM_DAILY_DM_LIMIT ?? '50',
+  10,
+);
 
 // ── Instagram Channel ─────────────────────────────────────────────────────────
 
@@ -59,10 +67,16 @@ export class InstagramChannel implements Channel {
         `/${this.accountId}?fields=id,name`,
       );
       this.connected = true;
-      logger.info({ accountId: me.id, name: me.name }, 'Instagram channel connected');
+      logger.info(
+        { accountId: me.id, name: me.name },
+        'Instagram channel connected',
+      );
       this.startReplyPolling();
     } catch (err) {
-      logger.error({ err }, 'Instagram channel connect failed — check access token');
+      logger.error(
+        { err },
+        'Instagram channel connect failed — check access token',
+      );
     }
   }
 
@@ -152,7 +166,13 @@ export class InstagramChannel implements Channel {
             is_from_me: false,
           };
           this.onMessage(jid, inbound);
-          this.onChatMetadata(jid, msg.created_time, msg.from.username, 'instagram', false);
+          this.onChatMetadata(
+            jid,
+            msg.created_time,
+            msg.from.username,
+            'instagram',
+            false,
+          );
         }
       }
     } catch (err) {
@@ -174,26 +194,30 @@ export class InstagramChannel implements Channel {
     return new Promise((resolve, reject) => {
       const sep = endpoint.includes('?') ? '&' : '?';
       const url = `${GRAPH_API}${endpoint}${sep}access_token=${this.accessToken}`;
-      https.get(url, (res) => {
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.error) reject(new Error(parsed.error.message));
-            else resolve(parsed as T);
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }).on('error', reject);
+      https
+        .get(url, (res) => {
+          let data = '';
+          res.on('data', (chunk) => (data += chunk));
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) reject(new Error(parsed.error.message));
+              else resolve(parsed as T);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        })
+        .on('error', reject);
     });
   }
 
   private graphPost<T>(endpoint: string, body: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify(body);
-      const url = new URL(`${GRAPH_API}${endpoint}?access_token=${this.accessToken}`);
+      const url = new URL(
+        `${GRAPH_API}${endpoint}?access_token=${this.accessToken}`,
+      );
       const options = {
         hostname: url.hostname,
         path: url.pathname + url.search,
@@ -241,9 +265,16 @@ registerChannel('instagram', (opts) => {
   const token = process.env.INSTAGRAM_ACCESS_TOKEN;
   const accountId = process.env.INSTAGRAM_ACCOUNT_ID;
   if (!token || !accountId) {
-    logger.warn('Instagram channel disabled — INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID required');
+    logger.warn(
+      'Instagram channel disabled — INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID required',
+    );
     return null;
   }
 
-  return new InstagramChannel(token, accountId, opts.onMessage, opts.onChatMetadata);
+  return new InstagramChannel(
+    token,
+    accountId,
+    opts.onMessage,
+    opts.onChatMetadata,
+  );
 });

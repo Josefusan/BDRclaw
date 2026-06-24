@@ -88,13 +88,13 @@ export function reloadSequences(): void {
   _cached = null;
 }
 
-function parseFrontmatter(
-  raw: string,
-  filename: string,
-): EmailTemplate | null {
+function parseFrontmatter(raw: string, filename: string): EmailTemplate | null {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match) {
-    logger.warn({ filename }, 'Sequence file missing YAML frontmatter, skipping');
+    logger.warn(
+      { filename },
+      'Sequence file missing YAML frontmatter, skipping',
+    );
     return null;
   }
 
@@ -119,9 +119,7 @@ function parseFrontmatter(
  * Returns the next personalized email to send for a prospect.
  * Returns null if the prospect has exhausted all sequence steps.
  */
-export function getNextEmail(
-  prospect: BDRProspect,
-): PersonalizedEmail | null {
+export function getNextEmail(prospect: BDRProspect): PersonalizedEmail | null {
   const templates = loadSequenceTemplates();
   if (templates.length === 0) return null;
 
@@ -156,7 +154,10 @@ export function getNextEmail(
 
 // ── Template Personalization ──────────────────────────────────────────────────
 
-const VARS: Record<string, (p: BDRProspect, senderName: string, senderEmail: string) => string> = {
+const VARS: Record<
+  string,
+  (p: BDRProspect, senderName: string, senderEmail: string) => string
+> = {
   firstName: (p) => p.name.split(' ')[0] || p.name,
   fullName: (p) => p.name,
   company: (p) => p.company,

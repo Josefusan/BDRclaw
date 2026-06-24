@@ -14,9 +14,14 @@ import './linkedin.js';
 
 // slack
 
+// sms (Twilio)
+import './sms.js';
+
 // telegram
+import './telegram.js';
 
 // twitter
 import './twitter.js';
 
-// whatsapp
+// whatsapp (Twilio)
+import './whatsapp.js';
