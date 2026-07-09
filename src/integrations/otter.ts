@@ -20,7 +20,8 @@ export interface OtterTranscript {
 function authHeader(): string {
   const user = process.env.OTTER_USERNAME;
   const pass = process.env.OTTER_PASSWORD;
-  if (!user || !pass) throw new Error('OTTER_USERNAME / OTTER_PASSWORD not set');
+  if (!user || !pass)
+    throw new Error('OTTER_USERNAME / OTTER_PASSWORD not set');
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
 }
 
@@ -30,7 +31,10 @@ export function isOtterConfigured(): boolean {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function get<T>(
+  path: string,
+  params?: Record<string, string>,
+): Promise<T> {
   const url = new URL(`${BASE}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -58,7 +62,9 @@ export async function getOtterTranscripts(
   }
 }
 
-export async function getOtterTranscript(otid: string): Promise<OtterTranscript | null> {
+export async function getOtterTranscript(
+  otid: string,
+): Promise<OtterTranscript | null> {
   try {
     const data = await get<{ speech: OtterTranscript }>(`/speech/${otid}`);
     return data.speech ?? null;

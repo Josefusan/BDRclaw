@@ -10,7 +10,11 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { getPipelineStats, getRecentActivity, listCampaigns } from '../bdr-db.js';
+import {
+  getPipelineStats,
+  getRecentActivity,
+  listCampaigns,
+} from '../bdr-db.js';
 import { getSecondBrainConfig, getSecondBrainSummary } from './second-brain.js';
 import { getClosedDealsRevenue } from '../deals-db.js';
 import { logger } from '../logger.js';
@@ -25,27 +29,34 @@ export interface BDRManagerReport {
   executiveSummary: string;
   wins: string[];
   gaps: string[];
-  focusAreas: Array<{ area: string; action: string; priority: 'high' | 'medium' | 'low' }>;
+  focusAreas: Array<{
+    area: string;
+    action: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
   messagingNotes: string[];
   forecastNotes: string;
 }
 
-export async function runBDRManager(period: 'daily' | 'weekly' = 'daily'): Promise<BDRManagerReport> {
+export async function runBDRManager(
+  period: 'daily' | 'weekly' = 'daily',
+): Promise<BDRManagerReport> {
   const start = Date.now();
   logger.info({ period }, 'BDR Manager starting');
 
-  const [businessContext, config, stats, campaigns, activity, revenue] = await Promise.all([
-    getSecondBrainSummary(),
-    getSecondBrainConfig(),
-    getPipelineStats(),
-    listCampaigns(),
-    getRecentActivity(50),
-    getClosedDealsRevenue(period === 'weekly' ? 7 : 1),
-  ]);
+  const [businessContext, config, stats, campaigns, activity, revenue] =
+    await Promise.all([
+      getSecondBrainSummary(),
+      getSecondBrainConfig(),
+      getPipelineStats(),
+      listCampaigns(),
+      getRecentActivity(50),
+      getClosedDealsRevenue(period === 'weekly' ? 7 : 1),
+    ]);
 
-  const activeCampaigns = campaigns.filter(c => c.status === 'active');
-  const recentReplies = activity.filter(a => a.type === 'replied');
-  const hotLeads = activity.filter(a => a.type === 'hot_lead');
+  const activeCampaigns = campaigns.filter((c) => c.status === 'active');
+  const recentReplies = activity.filter((a) => a.type === 'replied');
+  const hotLeads = activity.filter((a) => a.type === 'hot_lead');
 
   const prompt = `You are an elite VP of Sales reviewing ${period} performance for this business:
 
@@ -93,7 +104,15 @@ Be direct and specific. No corporate fluff. Respond with ONLY the JSON object.`;
     parsed = JSON.parse(raw.text);
   } catch {
     logger.error({ raw: raw.text }, 'BDR Manager JSON parse failed');
-    parsed = { overallStatus: 'behind', executiveSummary: raw.text.slice(0, 300), wins: [], gaps: [], focusAreas: [], messagingNotes: [], forecastNotes: '' };
+    parsed = {
+      overallStatus: 'behind',
+      executiveSummary: raw.text.slice(0, 300),
+      wins: [],
+      gaps: [],
+      focusAreas: [],
+      messagingNotes: [],
+      forecastNotes: '',
+    };
   }
 
   const result: BDRManagerReport = {

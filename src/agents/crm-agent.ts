@@ -8,7 +8,11 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { getAllProspects, getRecentActivity, getPipelineStats } from '../bdr-db.js';
+import {
+  getAllProspects,
+  getRecentActivity,
+  getPipelineStats,
+} from '../bdr-db.js';
 import { getSecondBrainSummary } from './second-brain.js';
 import { logger } from '../logger.js';
 
@@ -49,15 +53,27 @@ export async function runCRMAgent(): Promise<CRMAgentResult> {
   }, {});
 
   const stalledProspects = prospects
-    .filter(p => {
+    .filter((p) => {
       if (!p.last_touch_at) return true;
-      const daysSince = (Date.now() - new Date(p.last_touch_at).getTime()) / 86400000;
-      return daysSince > 7 && !['unsubscribed', 'not_interested', 'meeting_booked'].includes(p.stage);
+      const daysSince =
+        (Date.now() - new Date(p.last_touch_at).getTime()) / 86400000;
+      return (
+        daysSince > 7 &&
+        !['unsubscribed', 'not_interested', 'meeting_booked'].includes(p.stage)
+      );
     })
     .slice(0, 20)
-    .map(p => ({ id: p.id, name: p.name, company: p.company, stage: p.stage, lastTouch: p.last_touch_at }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      company: p.company,
+      stage: p.stage,
+      lastTouch: p.last_touch_at,
+    }));
 
-  const hotLeads = prospects.filter(p => p.stage === 'interested').slice(0, 10);
+  const hotLeads = prospects
+    .filter((p) => p.stage === 'interested')
+    .slice(0, 10);
 
   const prompt = `You are an elite CRM analyst reviewing the sales pipeline for this business:
 
@@ -70,7 +86,11 @@ Stalled prospects (>7 days no touch, not disqualified):
 ${JSON.stringify(stalledProspects, null, 2)}
 
 Hot leads (interested stage):
-${JSON.stringify(hotLeads.map(p => ({ id: p.id, name: p.name, company: p.company })), null, 2)}
+${JSON.stringify(
+  hotLeads.map((p) => ({ id: p.id, name: p.name, company: p.company })),
+  null,
+  2,
+)}
 
 Analyze the pipeline and return a JSON object with these exact fields:
 {
@@ -100,12 +120,20 @@ Return at most 10 recommendations. Prioritize hot leads and long-stalled prospec
   const raw = msg.content[0];
   if (raw.type !== 'text') throw new Error('Unexpected AI response type');
 
-  let parsed: { pipelineHealth: CRMAgentResult['pipelineHealth']; summary: string; recommendations: CRMRecommendation[] };
+  let parsed: {
+    pipelineHealth: CRMAgentResult['pipelineHealth'];
+    summary: string;
+    recommendations: CRMRecommendation[];
+  };
   try {
     parsed = JSON.parse(raw.text);
   } catch {
     logger.error({ raw: raw.text }, 'CRM Agent JSON parse failed');
-    parsed = { pipelineHealth: 'needs_attention', summary: raw.text.slice(0, 200), recommendations: [] };
+    parsed = {
+      pipelineHealth: 'needs_attention',
+      summary: raw.text.slice(0, 200),
+      recommendations: [],
+    };
   }
 
   const result: CRMAgentResult = {
@@ -114,6 +142,9 @@ Return at most 10 recommendations. Prioritize hot leads and long-stalled prospec
     ...parsed,
   };
 
-  logger.info({ health: result.pipelineHealth, recs: result.recommendations.length }, 'CRM Agent complete');
+  logger.info(
+    { health: result.pipelineHealth, recs: result.recommendations.length },
+    'CRM Agent complete',
+  );
   return result;
 }

@@ -22,6 +22,7 @@ import {
   getDueProspects,
   getLastBrainRun,
   getPipelineStats,
+  isProspectSuppressed,
   resetDailySendCounts,
   startBrainRun,
   updateProspectNextAction,
@@ -284,7 +285,36 @@ function determineNextAction(
 // Channel skills plug in here. Each skill registers a handler for its action type.
 // Until a skill is installed, actions are logged and deferred.
 
-type ActionHandler = (prospect: BDRProspect) => Promise<void>;
+/**
+ * A message composed and quality-gated by the agentic loop, passed explicitly
+ * to the action handler so the gated text — not a hardcoded template — is what
+ * actually reaches the wire. Distinct from bdr-agent's `ComposedMessage` (which
+ * also carries `channel`); this is the narrow handler-boundary contract.
+ */
+export interface ComposedOutbound {
+  body: string;
+  subject?: string;
+}
+
+/**
+ * Single audited "prefer the composed+gated message, else fall back to the
+ * handler's template" code path. Every message-composition handler routes its
+ * body through this so the preference can't be silently forgotten per-handler.
+ * (TS can't force runtime preference via types alone — this shared helper plus
+ * the required `composed?` signature is the enforcement.)
+ */
+export function resolveOutboundBody(
+  composed: ComposedOutbound | undefined,
+  fallback: () => string,
+): string {
+  const body = composed?.body?.trim();
+  return body ? body : fallback();
+}
+
+type ActionHandler = (
+  prospect: BDRProspect,
+  composed?: ComposedOutbound,
+) => Promise<void>;
 const actionHandlers = new Map<string, ActionHandler>();
 
 export function registerActionHandler(
@@ -304,6 +334,16 @@ export function getActionHandler(
 async function dispatchAction(prospect: BDRProspect): Promise<void> {
   const actionType = prospect.next_action_type;
   if (!actionType) return;
+
+  // Global suppression: never dispatch an outbound send to an opted-out contact,
+  // even if this prospect record was suppressed via a different record.
+  if (isProspectSuppressed(prospect)) {
+    logger.info(
+      { prospectId: prospect.id, actionType },
+      'dispatchAction: prospect suppressed — outbound skipped',
+    );
+    return;
+  }
 
   const handler = actionHandlers.get(actionType);
   if (!handler) {

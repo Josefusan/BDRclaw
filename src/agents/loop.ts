@@ -8,7 +8,9 @@
  *      b. Quality Gate audits it (ISC-9 — never bypassed)
  *      c. Channel sends it (or blocks are logged)
  *      d. Touch recorded, enrollment advanced, CRM synced
- *   2. Process all pending inbound replies through the Reply Handler
+ *
+ * Inbound replies are handled event-driven in the channel onMessage path
+ * (src/index.ts → processReply), not polled here.
  *
  * Error isolation: errors on one prospect NEVER stop processing others.
  * Every catch block logs { err, prospectId, phase } — no silent failures.
@@ -24,20 +26,18 @@ import {
   getCampaignById,
   getCampaignSteps,
   getProspectById,
+  isProspectSuppressed,
   recordTouch,
   updateEnrollment,
-  updateProspectStage,
 } from '../bdr-db.js';
 import { pushToCRMs } from '../crm/registry.js';
 import { logger } from '../logger.js';
-import { personalize } from '../campaign-runner.js';
 import { composeMessage } from './bdr-agent.js';
 import { reviewMessage } from './quality-gate.js';
 import type {
   Campaign,
   CampaignEnrollment,
   CampaignStep,
-  TouchChannel,
 } from '../bdr-types.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -86,14 +86,19 @@ function scheduleNextTick(): void {
     return;
   }
   setTimeout(async () => {
-    await runTick();
+    await runTickOnce();
     scheduleNextTick();
   }, LOOP_INTERVAL_MS);
 }
 
 // ── Main tick ─────────────────────────────────────────────────────────────────
 
-async function runTick(): Promise<void> {
+/**
+ * Run exactly one loop tick. Exported as the deterministic single-tick entry
+ * point so tests can drive a tick without the scheduler; production behavior is
+ * identical (the scheduler just calls this on an interval).
+ */
+export async function runTickOnce(): Promise<void> {
   tickCount++;
   const tickId = `tick-${tickCount}`;
   logger.info({ tickId, ts: new Date().toISOString() }, `${TICK_LABEL}: start`);
@@ -147,10 +152,12 @@ async function processEnrollment(
   const prospect = getProspectById(enrollment.prospect_id);
   if (!prospect) return;
 
-  // Skip unsubscribed/not_interested prospects
+  // Skip unsubscribed/not_interested prospects, and any contact on the global
+  // suppression list (opted out via a different prospect record — ISC-17).
   if (
     prospect.stage === 'unsubscribed' ||
-    prospect.stage === 'not_interested'
+    prospect.stage === 'not_interested' ||
+    isProspectSuppressed(prospect)
   ) {
     updateEnrollment(enrollment.id, { status: 'paused' });
     return;
@@ -221,7 +228,7 @@ async function sendStep(
       channel: composed.channel,
       direction: 'outbound',
       content: composed.body,
-      status: 'bounced', // using 'bounced' as closest to 'blocked' in TouchStatus
+      status: 'blocked', // ISC-13: quality-gate-blocked, recorded but not sent
       sent_at: new Date().toISOString(),
       subject: composed.subject,
     });
@@ -247,11 +254,14 @@ async function sendStep(
     return;
   }
 
-  // Inject the composed message so the action handler uses it instead of its default template
-  const enriched = injectMessage(prospect, composed.body, composed.subject);
-
+  // ISC-5/6/7/15: pass the composed + gated message explicitly so the handler
+  // sends THIS text (not its hardcoded template). Fix-by-contract: the message
+  // travels as a typed argument, not smuggled through enrichment.
   try {
-    await handler(enriched);
+    await handler(prospect, {
+      body: composed.body,
+      subject: composed.subject,
+    });
   } catch (err) {
     logger.error(
       { err, prospectId: prospect.id, step: step.step_number, phase: 'send' },
@@ -292,28 +302,6 @@ async function sendStep(
     },
     'Campaign step sent via agentic loop',
   );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function injectMessage(
-  prospect: import('../bdr-types.js').BDRProspect,
-  message: string,
-  subject?: string,
-): import('../bdr-types.js').BDRProspect {
-  try {
-    const existing = prospect.enrichment ? JSON.parse(prospect.enrichment) : {};
-    return {
-      ...prospect,
-      enrichment: JSON.stringify({
-        ...existing,
-        __campaign_message: message,
-        ...(subject ? { __campaign_subject: subject } : {}),
-      }),
-    };
-  } catch {
-    return prospect;
-  }
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────

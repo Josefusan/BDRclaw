@@ -39,3 +39,6 @@ groups/main/sequences/*
 .nanoclaw/
 
 agents-sdk-docs
+
+# Runtime prospect memory (per-prospect CLAUDE.md); test artifacts
+prospects/

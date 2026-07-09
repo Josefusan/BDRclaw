@@ -9,7 +9,7 @@
  *   - Never returns a message with {{placeholder}} tokens
  *   - Never repeats content already in prospect memory
  *   - Respects channel-specific conventions (LinkedIn brevity, email structure, SMS terseness)
- *   - Applies send-time jitter (handled by the caller / campaign-runner)
+ *   - Applies send-time jitter (handled by the caller / agentic loop)
  */
 
 import Anthropic from '@anthropic-ai/sdk';

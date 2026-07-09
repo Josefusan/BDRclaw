@@ -14,6 +14,7 @@ import type {
   CampaignStep,
   ImportJob,
   PipelineStats,
+  TouchChannel,
 } from './bdr-types.js';
 
 let db: Database.Database;
@@ -206,6 +207,23 @@ function createSchema(database: Database.Database): void {
       error       TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agent_run_agent ON bdr_agent_runs(agent, run_at);
+
+    -- Inbound idempotency: exactly-once reply processing per message id.
+    -- Prevents boot re-scan / webhook retry / long-poll redelivery from
+    -- replaying historical inbound messages through the reply handler.
+    CREATE TABLE IF NOT EXISTS bdr_processed_inbound (
+      message_id   TEXT PRIMARY KEY,
+      processed_at TEXT NOT NULL
+    );
+
+    -- Global outbound suppression list. One row per contact identifier so a
+    -- contact suppressed via one prospect record is honored across all records.
+    CREATE TABLE IF NOT EXISTS bdr_suppression (
+      contact     TEXT PRIMARY KEY,
+      channel     TEXT,
+      reason      TEXT,
+      created_at  TEXT NOT NULL
+    );
   `);
 }
 
@@ -350,6 +368,184 @@ export function getProspectById(id: string): BDRProspect | undefined {
   return db.prepare('SELECT * FROM bdr_prospects WHERE id = ?').get(id) as
     | BDRProspect
     | undefined;
+}
+
+/**
+ * Resolve a prospect from an inbound message's channel + contact identifier.
+ * Break A depends on this: without it, an inbound reply can't be mapped back
+ * to the prospect it came from. Column-backed channels use an indexed lookup;
+ * enrichment-JSON channels (twitter/telegram/instagram) do a candidate scan
+ * then verify the parsed value in JS to avoid LIKE false positives.
+ */
+export function getProspectByContact(
+  channel: TouchChannel,
+  contactId: string,
+): BDRProspect | undefined {
+  const raw = contactId.trim();
+  if (!raw) return undefined;
+
+  switch (channel) {
+    case 'sms':
+    case 'whatsapp': {
+      // Compare E.164 tolerant of a leading '+'.
+      const digits = raw.replace(/^\+/, '');
+      return db
+        .prepare(
+          `SELECT * FROM bdr_prospects
+           WHERE phone IS NOT NULL
+             AND REPLACE(phone, '+', '') = ?
+           LIMIT 1`,
+        )
+        .get(digits) as BDRProspect | undefined;
+    }
+
+    case 'email':
+      return db
+        .prepare(
+          'SELECT * FROM bdr_prospects WHERE LOWER(email) = LOWER(?) LIMIT 1',
+        )
+        .get(raw) as BDRProspect | undefined;
+
+    case 'linkedin': {
+      // Normalize like profileUrlToJid (strip query string + trailing slash)
+      // on both sides. linkedin_url has no dedicated index and stored values
+      // may carry query strings, so normalize in JS for a correct compare.
+      const clean = raw.split('?')[0].replace(/\/$/, '');
+      const rows = db
+        .prepare('SELECT * FROM bdr_prospects WHERE linkedin_url IS NOT NULL')
+        .all() as BDRProspect[];
+      return rows.find(
+        (p) => p.linkedin_url!.split('?')[0].replace(/\/$/, '') === clean,
+      );
+    }
+
+    case 'twitter':
+      return scanEnrichmentProspects((_p, e) => {
+        const uname = raw.replace(/^@/, '').toLowerCase();
+        if (e.twitter_user_id != null && String(e.twitter_user_id) === raw)
+          return true;
+        const handle = (e.twitter_handle ?? e.twitter_username) as
+          | string
+          | undefined;
+        return (
+          handle != null &&
+          String(handle).replace(/^@/, '').toLowerCase() === uname
+        );
+      });
+
+    case 'telegram':
+      return scanEnrichmentProspects(
+        (_p, e) =>
+          e.telegram_chat_id != null && String(e.telegram_chat_id) === raw,
+      );
+
+    case 'instagram':
+      return scanEnrichmentProspects(
+        (_p, e) =>
+          (e.instagram_id != null && String(e.instagram_id) === raw) ||
+          (e.instagram_user_id != null && String(e.instagram_user_id) === raw),
+      );
+
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Scan prospects that have enrichment data, parse the JSON once per row, and
+ * return the first row matching the predicate. Used for channels whose contact
+ * id lives inside the enrichment JSON TEXT column (no dedicated index).
+ */
+function scanEnrichmentProspects(
+  match: (
+    prospect: BDRProspect,
+    enrichment: Record<string, unknown>,
+  ) => boolean,
+): BDRProspect | undefined {
+  const rows = db
+    .prepare(
+      "SELECT * FROM bdr_prospects WHERE enrichment IS NOT NULL AND enrichment != ''",
+    )
+    .all() as BDRProspect[];
+  for (const row of rows) {
+    let enrichment: Record<string, unknown> = {};
+    try {
+      enrichment = row.enrichment ? JSON.parse(row.enrichment) : {};
+    } catch {
+      continue;
+    }
+    if (match(row, enrichment)) return row;
+  }
+  return undefined;
+}
+
+/**
+ * Mark an inbound message id as processed. Returns true if newly inserted
+ * (caller should process it), false if it was already seen (skip — idempotent).
+ */
+export function markInboundProcessed(messageId: string): boolean {
+  const result = db
+    .prepare(
+      `INSERT OR IGNORE INTO bdr_processed_inbound (message_id, processed_at)
+       VALUES (?, ?)`,
+    )
+    .run(messageId, new Date().toISOString());
+  return result.changes > 0;
+}
+
+// ── Suppression (global opt-out enforcement) ────────────────────────────────────
+
+/** All normalized contact identifiers for a prospect, for suppression keying. */
+function prospectContactKeys(prospect: BDRProspect): string[] {
+  const keys: string[] = [`id:${prospect.id}`];
+  if (prospect.email) keys.push(`email:${prospect.email.toLowerCase()}`);
+  if (prospect.phone) keys.push(`phone:${prospect.phone.replace(/^\+/, '')}`);
+  if (prospect.linkedin_url)
+    keys.push(
+      `linkedin:${prospect.linkedin_url.split('?')[0].replace(/\/$/, '')}`,
+    );
+  if (prospect.enrichment) {
+    try {
+      const e = JSON.parse(prospect.enrichment) as Record<string, unknown>;
+      if (e.twitter_user_id != null) keys.push(`twitter:${e.twitter_user_id}`);
+      if (e.telegram_chat_id != null)
+        keys.push(`telegram:${e.telegram_chat_id}`);
+      if (e.instagram_id != null) keys.push(`instagram:${e.instagram_id}`);
+      if (e.instagram_user_id != null)
+        keys.push(`instagram:${e.instagram_user_id}`);
+    } catch {
+      /* enrichment not JSON */
+    }
+  }
+  return keys;
+}
+
+/** Add every contact identifier of a prospect to the global suppression list. */
+export function addProspectToSuppression(
+  prospect: BDRProspect,
+  reason: string,
+): void {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO bdr_suppression (contact, channel, reason, created_at)
+     VALUES (?, ?, ?, ?)`,
+  );
+  const insertAll = db.transaction((keys: string[]) => {
+    for (const key of keys) stmt.run(key, null, reason, now);
+  });
+  insertAll(prospectContactKeys(prospect));
+}
+
+/** True if the prospect's id or ANY of its contact identifiers is suppressed. */
+export function isProspectSuppressed(prospect: BDRProspect): boolean {
+  const keys = prospectContactKeys(prospect);
+  const placeholders = keys.map(() => '?').join(', ');
+  const row = db
+    .prepare(
+      `SELECT 1 FROM bdr_suppression WHERE contact IN (${placeholders}) LIMIT 1`,
+    )
+    .get(...keys);
+  return row !== undefined;
 }
 
 export function getAllProspects(limit = 100, offset = 0): BDRProspect[] {
@@ -912,7 +1108,7 @@ export function getRecentActivity(limit = 20): ActivityItem[] {
   return rows.map((r) => {
     let type: ActivityItem['type'] = 'sent';
     if (r.direction === 'inbound') type = 'replied';
-    if (r.status === 'bounced') type = 'blocked';
+    if (r.status === 'blocked' || r.status === 'bounced') type = 'blocked';
     if (r.reply_classification === 'interested') type = 'hot_lead';
     return {
       id: r.id,

@@ -68,24 +68,50 @@ export interface SecondBrainContext {
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 const KEYS = [
-  'businessName', 'industry', 'foundedYear', 'teamSize', 'website',
-  'whatYouDo', 'whyYouExist', 'howYouDeliver',
-  'coreOffer', 'pricingModel', 'avgDealSize', 'salesCycleLength',
-  'icpDescription', 'icpIndustries', 'icpJobTitles', 'icpCompanySize', 'icpPainPoints',
-  'monthlyRevenueGoal', 'monthlyLeadGoal', 'quarterlyGoal',
-  'messageTone', 'messageSentiment', 'keyDifferentiators', 'proofPoints', 'callToAction',
-  'mainCompetitors', 'competitiveAdvantage', 'updatedAt',
+  'businessName',
+  'industry',
+  'foundedYear',
+  'teamSize',
+  'website',
+  'whatYouDo',
+  'whyYouExist',
+  'howYouDeliver',
+  'coreOffer',
+  'pricingModel',
+  'avgDealSize',
+  'salesCycleLength',
+  'icpDescription',
+  'icpIndustries',
+  'icpJobTitles',
+  'icpCompanySize',
+  'icpPainPoints',
+  'monthlyRevenueGoal',
+  'monthlyLeadGoal',
+  'quarterlyGoal',
+  'messageTone',
+  'messageSentiment',
+  'keyDifferentiators',
+  'proofPoints',
+  'callToAction',
+  'mainCompetitors',
+  'competitiveAdvantage',
+  'updatedAt',
 ] as const;
 
 export function getSecondBrainConfig(): Partial<SecondBrainConfig> {
   const db = getBdrDb();
-  const rows = db.prepare('SELECT key, value FROM bdr_second_brain').all() as { key: string; value: string }[];
+  const rows = db.prepare('SELECT key, value FROM bdr_second_brain').all() as {
+    key: string;
+    value: string;
+  }[];
   const result: Record<string, string> = {};
   for (const row of rows) result[row.key] = row.value;
   return result as Partial<SecondBrainConfig>;
 }
 
-export function saveSecondBrainConfig(config: Partial<SecondBrainConfig>): void {
+export function saveSecondBrainConfig(
+  config: Partial<SecondBrainConfig>,
+): void {
   const db = getBdrDb();
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO bdr_second_brain (key, value, updated_at)
@@ -96,7 +122,7 @@ export function saveSecondBrainConfig(config: Partial<SecondBrainConfig>): void 
     for (const [k, v] of entries) stmt.run(k, v, now);
   });
   const entries = Object.entries(config)
-    .filter(([k]) => KEYS.includes(k as typeof KEYS[number]))
+    .filter(([k]) => KEYS.includes(k as (typeof KEYS)[number]))
     .map(([k, v]) => [k, String(v ?? '')] as [string, string]);
   upsertMany(entries);
   logger.info({ keys: entries.map(([k]) => k) }, 'Second Brain config saved');
@@ -106,7 +132,9 @@ export function saveSecondBrainConfig(config: Partial<SecondBrainConfig>): void 
 
 let _cachedSummary: { text: string; generatedAt: string } | null = null;
 
-export async function getSecondBrainSummary(forceRefresh = false): Promise<string> {
+export async function getSecondBrainSummary(
+  forceRefresh = false,
+): Promise<string> {
   if (!forceRefresh && _cachedSummary) {
     const ageMs = Date.now() - new Date(_cachedSummary.generatedAt).getTime();
     if (ageMs < 30 * 60 * 1000) return _cachedSummary.text; // 30 min cache
@@ -130,7 +158,10 @@ Write the briefing in third person, present tense. Be specific. Include their IC
     messages: [{ role: 'user', content: prompt }],
   });
 
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : 'Context unavailable.';
+  const text =
+    msg.content[0].type === 'text'
+      ? msg.content[0].text
+      : 'Context unavailable.';
   _cachedSummary = { text, generatedAt: new Date().toISOString() };
   logger.info('Second Brain summary refreshed');
   return text;

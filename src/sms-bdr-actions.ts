@@ -16,8 +16,10 @@ import crypto from 'crypto';
 import {
   readProspectMemory,
   registerActionHandler,
+  resolveOutboundBody,
   writeProspectMemory,
 } from './bdr-brain.js';
+import type { ComposedOutbound } from './bdr-brain.js';
 import {
   recordTouch,
   updateProspectNextAction,
@@ -34,71 +36,77 @@ function getSMSChannel(): SMSChannel | null {
   return null;
 }
 
-registerActionHandler('send_sms', async (prospect: BDRProspect) => {
-  if (!prospect.phone) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'send_sms: no phone number on prospect',
+registerActionHandler(
+  'send_sms',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    if (!prospect.phone) {
+      logger.warn(
+        { prospectId: prospect.id },
+        'send_sms: no phone number on prospect',
+      );
+      return;
+    }
+
+    const channel = getSMSChannel();
+    if (!channel) {
+      logger.warn(
+        'send_sms: SMS channel not connected — check SMS_ENABLED and Twilio credentials',
+      );
+      return;
+    }
+
+    const memory = readProspectMemory(prospect.id);
+    const touchCount = (memory.match(/send_sms/g) ?? []).length;
+
+    // Never send more than 2 unsolicited SMS — respect opt-out laws (TCPA in US)
+    if (touchCount >= 2) {
+      logger.info(
+        { prospectId: prospect.id },
+        'send_sms: max SMS touches reached, skipping',
+      );
+      updateProspectStage(prospect.id, 'not_interested');
+      return;
+    }
+
+    // Prefer the composed + quality-gated message; fall back to the template.
+    const message = resolveOutboundBody(composed, () =>
+      buildSMS(prospect, touchCount),
     );
-    return;
-  }
+    const jid = e164ToJid(prospect.phone);
 
-  const channel = getSMSChannel();
-  if (!channel) {
-    logger.warn(
-      'send_sms: SMS channel not connected — check SMS_ENABLED and Twilio credentials',
-    );
-    return;
-  }
+    try {
+      await channel.sendMessage(jid, message);
 
-  const memory = readProspectMemory(prospect.id);
-  const touchCount = (memory.match(/send_sms/g) ?? []).length;
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        channel: 'sms',
+        direction: 'outbound',
+        content: message,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
 
-  // Never send more than 2 unsolicited SMS — respect opt-out laws (TCPA in US)
-  if (touchCount >= 2) {
-    logger.info(
-      { prospectId: prospect.id },
-      'send_sms: max SMS touches reached, skipping',
-    );
-    updateProspectStage(prospect.id, 'not_interested');
-    return;
-  }
+      const ts = new Date().toISOString().slice(0, 10);
+      writeProspectMemory(
+        prospect.id,
+        memory + `\n[${ts}] send_sms (touch ${touchCount + 1}):\n${message}\n`,
+      );
 
-  const message = buildSMS(prospect, touchCount);
-  const jid = e164ToJid(prospect.phone);
+      const next = new Date();
+      next.setDate(next.getDate() + 3);
+      updateProspectNextAction(prospect.id, next.toISOString(), 'send_sms');
+      updateProspectStage(prospect.id, 'follow_up');
 
-  try {
-    await channel.sendMessage(jid, message);
-
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      channel: 'sms',
-      direction: 'outbound',
-      content: message,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
-
-    const ts = new Date().toISOString().slice(0, 10);
-    writeProspectMemory(
-      prospect.id,
-      memory + `\n[${ts}] send_sms (touch ${touchCount + 1}):\n${message}\n`,
-    );
-
-    const next = new Date();
-    next.setDate(next.getDate() + 3);
-    updateProspectNextAction(prospect.id, next.toISOString(), 'send_sms');
-    updateProspectStage(prospect.id, 'follow_up');
-
-    logger.info(
-      { prospectId: prospect.id, phone: prospect.phone, touchCount },
-      'SMS sent',
-    );
-  } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'send_sms failed');
-  }
-});
+      logger.info(
+        { prospectId: prospect.id, phone: prospect.phone, touchCount },
+        'SMS sent',
+      );
+    } catch (err) {
+      logger.error({ err, prospectId: prospect.id }, 'send_sms failed');
+    }
+  },
+);
 
 function buildSMS(prospect: BDRProspect, touchCount: number): string {
   const firstName = prospect.name.split(' ')[0];

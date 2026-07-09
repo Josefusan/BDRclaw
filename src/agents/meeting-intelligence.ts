@@ -77,7 +77,10 @@ export async function analyzeMeeting(
   const prompt = buildPrompt(transcript, topic, attendees, myRole);
 
   const model = process.env.MEETING_AI_MODEL ?? 'claude-sonnet-4-6';
-  logger.info({ model, transcriptLen: transcript.length }, 'Analyzing meeting transcript');
+  logger.info(
+    { model, transcriptLen: transcript.length },
+    'Analyzing meeting transcript',
+  );
 
   const msg = await ai.messages.create({
     model,
@@ -92,7 +95,10 @@ export async function analyzeMeeting(
   try {
     return JSON.parse(raw.text) as MeetingAnalysis;
   } catch (err) {
-    logger.error({ err, raw: raw.text }, 'Failed to parse meeting analysis JSON');
+    logger.error(
+      { err, raw: raw.text },
+      'Failed to parse meeting analysis JSON',
+    );
     throw new Error('Meeting analysis returned invalid JSON');
   }
 }

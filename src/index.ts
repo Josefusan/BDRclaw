@@ -57,7 +57,12 @@ import {
   shouldDropMessage,
 } from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { initBDRDatabase } from './bdr-db.js';
+import {
+  getProspectByContact,
+  initBDRDatabase,
+  markInboundProcessed,
+} from './bdr-db.js';
+import type { TouchChannel } from './bdr-types.js';
 import { startBDRBrain } from './bdr-brain.js';
 import './gmail-bdr-actions.js';
 import './linkedin-bdr-actions.js';
@@ -65,7 +70,6 @@ import './sms-bdr-actions.js';
 import './telegram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 import { startWebUI } from './web-ui.js';
-import { registerCampaignRunner } from './campaign-runner.js';
 import { startAgenticLoop } from './agents/loop.js';
 import { processReply } from './agents/reply-handler.js';
 // CRM adapters — self-register when env vars are set
@@ -484,6 +488,36 @@ function ensureContainerSystemRunning(): void {
   cleanupOrphans();
 }
 
+/**
+ * Parse a channel JID into a BDR (channel, contactId) pair for prospect lookup.
+ * JID conventions are prefix-based (see each channel's *ToJid helper):
+ *   sms:+1555…  whatsapp:+1555…  telegram:<chatId>
+ *   linkedin:<profileUrl>  twitter:<userId>  instagram:<id>
+ * Returns null for JIDs that aren't a known prospect channel (group chats,
+ * the main NanoClaw group), which must fall through untouched.
+ */
+const PROSPECT_JID_CHANNELS = new Set<TouchChannel>([
+  'sms',
+  'whatsapp',
+  'telegram',
+  'linkedin',
+  'twitter',
+  'instagram',
+  'email',
+]);
+
+function parseProspectJid(
+  jid: string,
+): { channel: TouchChannel; contactId: string } | null {
+  const sep = jid.indexOf(':');
+  if (sep === -1) return null;
+  const prefix = jid.slice(0, sep);
+  const contactId = jid.slice(sep + 1); // keep the rest intact (URLs have colons)
+  if (!contactId) return null;
+  if (!PROSPECT_JID_CHANNELS.has(prefix as TouchChannel)) return null;
+  return { channel: prefix as TouchChannel, contactId };
+}
+
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
@@ -492,7 +526,6 @@ async function main(): Promise<void> {
   loadState();
   startWebUI();
   startBDRBrain();
-  registerCampaignRunner();
   startAgenticLoop();
   restoreRemoteControl();
 
@@ -555,6 +588,32 @@ async function main(): Promise<void> {
     }
   }
 
+  // Route an inbound message to the BDR reply handler when it maps to a known
+  // prospect. Break A fix: without this, replies dead-ended at storeMessage.
+  // Fire-and-forget with structured error logging — never throws out of the
+  // synchronous onMessage callback, never blocks NanoClaw group routing.
+  const routeInboundToReplyHandler = (
+    chatJid: string,
+    msg: NewMessage,
+  ): void => {
+    // Only real inbound counts — skip our own echoes and bot messages.
+    if (msg.is_from_me || msg.is_bot_message) return;
+
+    const parsed = parseProspectJid(chatJid);
+    if (!parsed) return; // non-prospect JID (group chat, main NanoClaw group)
+
+    const prospect = getProspectByContact(parsed.channel, parsed.contactId);
+    if (!prospect) return; // inbound from a contact that isn't a prospect
+
+    // Idempotency: process each message id exactly once (guards boot re-scan,
+    // webhook retries, Telegram long-poll redelivery from replaying history).
+    if (!markInboundProcessed(msg.id)) return;
+
+    processReply(prospect.id, msg, parsed.channel).catch((err) =>
+      logger.error({ err, chatJid }, 'Reply handler routing failed'),
+    );
+  };
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
@@ -584,6 +643,7 @@ async function main(): Promise<void> {
         }
       }
       storeMessage(msg);
+      routeInboundToReplyHandler(chatJid, msg);
     },
     onChatMetadata: (
       chatJid: string,

@@ -18,12 +18,12 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { readProspectMemory, writeProspectMemory } from '../bdr-brain.js';
 import {
+  addProspectToSuppression,
   getProspectById,
   recordTouch,
   updateProspectNextAction,
   updateProspectStage,
 } from '../bdr-db.js';
-import { pushToCRMs } from '../crm/registry.js';
 import { logger } from '../logger.js';
 import type {
   BDRProspect,
@@ -33,6 +33,11 @@ import type {
 import type { NewMessage } from '../types.js';
 
 const ai = new Anthropic();
+
+// Deterministic opt-out keywords — word-boundary matched so "stopping" or
+// "endless" do NOT trigger, but a bare "STOP" / "Stop." / "unsubscribe" does.
+// This runs BEFORE any Claude call so opt-out is honored even if the AI is down.
+const OPT_OUT_RE = /\b(stop|unsubscribe|cancel|quit|end)\b/i;
 
 // ── Classification ────────────────────────────────────────────────────────────
 
@@ -141,6 +146,29 @@ export async function processReply(
     return { classification: 'not_interested', responded: false };
   }
 
+  // ── Deterministic opt-out pre-gate (ISC-17) ──────────────────────────────────
+  // Honor STOP/UNSUBSCRIBE/etc. BEFORE any Claude call. Compliance must not
+  // depend on the AI being reachable or classifying correctly.
+  if (OPT_OUT_RE.test(inboundMsg.content)) {
+    recordTouch({
+      id: crypto.randomUUID(),
+      prospect_id: prospectId,
+      channel,
+      direction: 'inbound',
+      content: inboundMsg.content,
+      status: 'replied',
+      sent_at: inboundMsg.timestamp,
+      reply_classification: 'unsubscribe',
+    });
+    updateProspectStage(prospectId, 'unsubscribed');
+    addProspectToSuppression(prospect, 'inbound opt-out keyword');
+    logger.info(
+      { prospectId, channel },
+      'Deterministic opt-out matched — unsubscribed, suppressed, no AI call',
+    );
+    return { classification: 'unsubscribe', responded: false };
+  }
+
   const memory = readProspectMemory(prospectId);
   const classification = await classifyReply(
     prospect,
@@ -177,7 +205,8 @@ export async function processReply(
   switch (classification) {
     case 'unsubscribe':
       updateProspectStage(prospectId, 'unsubscribed');
-      // Pause all campaign enrollments for this prospect
+      // Add to global suppression so outbound halts across all prospect records
+      addProspectToSuppression(prospect, 'inbound unsubscribe (classified)');
       logger.info(
         { prospectId },
         'Prospect unsubscribed — all outbound halted',
@@ -242,16 +271,9 @@ export async function processReply(
       break;
   }
 
-  // Sync stage change to all CRMs
-  const updatedProspect = getProspectById(prospectId);
-  if (updatedProspect) {
-    await pushToCRMs({
-      type: 'reply_received',
-      prospect: updatedProspect,
-      timestamp: new Date().toISOString(),
-      details: { classification, channel },
-    }).catch((err) => logger.warn({ err }, 'CRM push failed after reply'));
-  }
+  // CRM sync is handled authoritatively by updateProspectStage (fired in every
+  // branch above), which pushes a single stage_change event per reply. We do NOT
+  // push a second reply_received event here — one CRM push per reply (ISC-25).
 
   return { classification, responded, responseText };
 }

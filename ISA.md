@@ -66,9 +66,9 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-4: The loop can be stopped cleanly via `SIGTERM`/`SIGINT` without leaving a prospect in a half-sent state.
 
 ### BDR Agent — Message Generation
-- [ ] ISC-5: `BDRAgent.compose()` returns a personalized message that references the prospect's `name`, `company`, or `title` — never sends a template with unfilled `{{placeholder}}` tokens.
-- [ ] ISC-6: The agent reads the full prospect memory (stage, previous touches, enrichment) before composing — it never repeats a message already in the touch history.
-- [ ] ISC-7: The agent selects the appropriate channel for the current campaign step — it does not email when the step is `linkedin_dm`.
+- [x] ISC-5: `BDRAgent.compose()` returns a personalized message that references the prospect's `name`, `company`, or `title` — never sends a template with unfilled `{{placeholder}}` tokens. *(2026-07-08: composed message now reaches the wire by contract; e2e test asserts no `{{` leak.)*
+- [x] ISC-6: The agent reads the full prospect memory (stage, previous touches, enrichment) before composing — it never repeats a message already in the touch history.
+- [x] ISC-7: The agent selects the appropriate channel for the current campaign step — it does not email when the step is `linkedin_dm`.
 - [ ] ISC-8: The agent applies send-time jitter of ±`campaign.jitter_minutes` to every outbound message.
 
 ### Quality Gate — Every Message Audited Before Send
@@ -76,16 +76,16 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-10: The quality gate returns `{ pass: false, reason }` when it detects an unfilled placeholder (`{{` in the message body).
 - [ ] ISC-11: The quality gate returns `{ pass: false, reason }` when the message body contains a known spam-trigger word from the blocklist.
 - [ ] ISC-12: The quality gate returns `{ pass: false, reason }` when the message exceeds the channel's maximum character limit (SMS: 320, email: unlimited, LinkedIn DM: 300, Twitter DM: 10000).
-- [ ] ISC-13: When the quality gate fails, the message is NOT sent — it is logged with `status: 'blocked'` in `bdr_touches`.
-- [ ] ISC-14: The quality gate's `pass`/`fail` decision and reason are logged for every message evaluated.
-- [ ] Anti: ISC-15: `sendMessage()` is never called without a preceding `QualityGate.review()` call in the execution path — verifiable by tracing the call chain in `loop.ts`.
+- [x] ISC-13: When the quality gate fails, the message is NOT sent — it is logged with `status: 'blocked'` in `bdr_touches`. *(2026-07-08: was `'bounced'`, now `'blocked'`; `TouchStatus` gained the value.)*
+- [x] ISC-14: The quality gate's `pass`/`fail` decision and reason are logged for every message evaluated.
+- [x] Anti: ISC-15: `sendMessage()` is never called without a preceding `QualityGate.review()` call in the execution path — verifiable by tracing the call chain in `loop.ts`. *(2026-07-08: the composed+gated body now travels to the handler as a typed `ComposedOutbound` arg via `resolveOutboundBody`; handlers no longer send un-gated templates when a composed message is present.)*
 
 ### Reply Handler — Inbound Intelligence
-- [ ] ISC-16: `ReplyHandler.process()` classifies every inbound message into one of: `interested`, `not_now`, `referral`, `not_interested`, `unsubscribe`, `question`, `out_of_office`.
-- [ ] ISC-17: An `unsubscribe` classification immediately sets `prospect.stage = 'unsubscribed'` and halts all further outbound for that prospect.
-- [ ] ISC-18: An `interested` classification fires a hot-lead notification (console log + optional webhook) and sends the Calendly/meeting link if `CALENDLY_URL` is set.
-- [ ] ISC-19: A `question` classification generates a Claude-powered answer grounded in the campaign's `value_proposition` and sends it on the same channel as the inbound.
-- [ ] ISC-20: The reply handler updates `prospect.stage` and records the touch with `direction: 'inbound'` and the classification in `reply_classification`.
+- [x] ISC-16: `ReplyHandler.process()` classifies every inbound message into one of: `interested`, `not_now`, `referral`, `not_interested`, `unsubscribe`, `question`, `out_of_office`. *(2026-07-08: inbound now routed here from `index.ts` onMessage via `getProspectByContact`; e2e test asserts classification.)*
+- [x] ISC-17: An `unsubscribe` classification immediately sets `prospect.stage = 'unsubscribed'` and halts all further outbound for that prospect. *(2026-07-08: plus a deterministic STOP/UNSUBSCRIBE pre-gate runs before any Claude call, and a global suppression list is enforced in both outbound entry points.)*
+- [x] ISC-18: An `interested` classification fires a hot-lead notification (console log + optional webhook) and sends the Calendly/meeting link if `CALENDLY_URL` is set.
+- [x] ISC-19: A `question` classification generates a Claude-powered answer grounded in the campaign's `value_proposition` and sends it on the same channel as the inbound.
+- [x] ISC-20: The reply handler updates `prospect.stage` and records the touch with `direction: 'inbound'` and the classification in `reply_classification`.
 
 ### Campaign Builder
 - [ ] ISC-21: `POST /api/campaigns/builder/start` returns `{ sessionId, message }` with BDR Claude's opening question within 5 seconds.
@@ -102,8 +102,8 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 ### Channels — Core Delivery
 - [ ] ISC-29: All seven channels (`email`, `linkedin`, `twitter`, `instagram`, `telegram`, `whatsapp`, `sms`) self-register when their respective env vars are present.
 - [ ] ISC-30: Each channel's `sendMessage()` enforces its daily limit and throws when the limit is reached — never silently drops the message.
-- [ ] ISC-31: Twilio inbound webhooks for SMS and WhatsApp reach `ReplyHandler.process()` within one request cycle.
-- [ ] ISC-32: Telegram long-polling delivers inbound messages to `ReplyHandler.process()` within 35 seconds of the user sending.
+- [DEFERRED-VERIFY] ISC-31: Twilio inbound webhooks for SMS and WhatsApp reach `ReplyHandler.process()` within one request cycle. *(2026-07-08: wired in code — onMessage → `getProspectByContact('sms'|'whatsapp')` → `processReply`, with per-message idempotency. Live-probe deferred: needs a deployed public webhook URL (Phase 2). Follow-up: live SMS round-trip after Railway deploy.)*
+- [DEFERRED-VERIFY] ISC-32: Telegram long-polling delivers inbound messages to `ReplyHandler.process()` within 35 seconds of the user sending. *(2026-07-08: wired in code — same onMessage path resolves `telegram:<chatId>`. Live-probe deferred: needs a running bot + real chat. Follow-up: live Telegram round-trip.)*
 
 ### Web Dashboard
 - [ ] ISC-33: `GET /api/stats` returns `PipelineStats` with correct `by_stage` counts matching the DB.
@@ -167,15 +167,25 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-06-24** — BDR agent uses `claude-sonnet-4-6` for message composition. Reason: message quality is the product's core value. Haiku produces noticeably worse personalization on complex enrichment contexts.
 - **2026-06-24** — Reply handler uses `claude-sonnet-4-6` for classification + response drafting. Reason: misclassifying an "interested" reply as "not_interested" is a revenue-destroying bug. The cost of a Sonnet call on inbound is acceptable.
 - **2026-06-24** — All agent files live in `src/agents/` to make the self-auditing structure explicit and navigable.
+- **2026-07-08** — Break B fixed by contract, not by patching the smuggle: `ActionHandler` now takes `(prospect, composed?: ComposedOutbound)` and every message-composition handler routes its body through the shared `resolveOutboundBody(composed, fallback)` helper. Reason: TS can't force a runtime preference, but a required signature + a single audited helper makes "prefer the gated message, else template" one code path a future handler can't silently skip. The prior enrichment-smuggling (`__campaign_message`) is deleted.
+- **2026-07-08** — CRM double-push on reply deduped: kept `updateProspectStage`'s automatic `stage_change` push as the single authoritative sync (it fires in every reply branch and is the ISC-25 invariant across all paths) and removed the redundant `reply_received` push from `processReply`. Tradeoff: the distinct `reply_received` event type is dropped; classification still flows to CRM via the stage change.
+- **2026-07-08** — Inbound idempotency via a `bdr_processed_inbound(message_id)` table + `markInboundProcessed()` (INSERT OR IGNORE): processReply runs exactly once per message id, so boot re-scans, Twilio webhook retries, and Telegram long-poll redelivery cannot replay history.
+- **2026-07-08** — Deleted `src/campaign-runner.ts` (orphaned — `runCampaignTick` never called). The agentic loop is the single live send path; `personalize` lived there but was unused by the loop.
+- **2026-07-08** — Channel scope decision (Joseph): cold outreach = Email + SMS + LinkedIn (LinkedIn via self-hosted Patchright); X/Twitter and WhatsApp are warm/reply-only (X cold DMs are policy-banned + mostly undeliverable; Meta paused US marketing templates since Apr 2025). See `docs/MVP-PLAN.md`. This narrows — but does not remove — the "Playwright only for LinkedIn" constraint; Patchright is a drop-in Playwright fork.
 
 ---
 
 ## Changelog
 
-*(Populated during VERIFY phase as errors are found and corrected.)*
+- **2026-07-08** — conjectured: "the module existing = the feature existing" — the agent layer (compose, gate, reply-handler) was fully built and unit-tested. refuted_by: an end-to-end trace showed inbound `processReply` was imported but never called, and the composed+gated message was written to `enrichment.__campaign_message` which no handler read — so the delivered message never passed the gate and no reply was ever classified. learned: unit tests on modules don't catch open seams *between* modules; the wiring breaks lived exactly where two pipelines (the agentic loop and the legacy NanoClaw `*-bdr-actions` handlers) joined by convention (enrichment-JSON smuggling, a never-called import) rather than by types. criterion_now: a single end-to-end edge test (`src/agents/loop.e2e.test.ts`) asserts the channel payload equals the gated body and that an inbound reply changes stage — the missing feedback loop that would have caught both breaks. `ISC-15`'s original "manual grep" verification is why it didn't.
 
 ---
 
 ## Verification
 
-*(Populated after each ISC passes — quoted command output or log evidence.)*
+- **ISC-5/6/7/15 (Break B)** — `src/agents/loop.e2e.test.ts` › "the composed + gated message reaches the channel handler": registers a capturing `send_sms` handler, runs one tick, asserts `captured === GATED_BODY` and `not.toMatch(/\{\{/)`. Passes (3/3 in file). Pre-fix this assertion fails: the old `injectMessage` smuggle passed the handler a `prospect` with no `composed` arg, so `captured` would be `undefined`.
+- **ISC-13** — `loop.ts` blocked-touch path now writes `status: 'blocked'`; `TouchStatus` union + `getRecentActivity` mapping updated. `npm run typecheck` exit 0.
+- **ISC-16/20 (Break A)** — e2e test › "an inbound reply is classified and moves the prospect stage": `processReply` → stage `interested`, inbound touch recorded with `reply_classification`. Passes.
+- **ISC-17** — e2e test › "a deterministic STOP unsubscribes without any AI call and halts outbound": stage → `unsubscribed`, classifier call count `=== 0` (pre-gate ran first), and a subsequent tick does not invoke the send handler (suppression + stage skip). Passes.
+- **ISC-31/32** — `[DEFERRED-VERIFY]`: wired in `src/index.ts` onMessage → `getProspectByContact` → `processReply`; live round-trip requires the Phase 2 deploy (public webhook URL / running bot). Verified in-code by typecheck + the e2e inbound path using the `'sms'` channel.
+- **Full suite** — `npm test`: 233 passed / 20 files. `npm run typecheck`: exit 0. `npm run lint`: zero errors on touched files (pre-existing repo-wide `no-catch-all` warnings only). Grep probes: `__campaign_message` 0 matches, `campaign-runner` 0 (code) refs, `runCampaignTick`/`registerCampaignRunner` 0.

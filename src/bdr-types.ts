@@ -50,7 +50,8 @@ export type TouchStatus =
   | 'opened'
   | 'clicked'
   | 'replied'
-  | 'bounced';
+  | 'bounced'
+  | 'blocked';
 
 export type ProspectSource =
   | 'manual'

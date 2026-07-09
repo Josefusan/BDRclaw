@@ -50,7 +50,9 @@ export function verifyZoomWebhook(
 ): boolean {
   const secret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
   if (!secret) {
-    logger.warn('ZOOM_WEBHOOK_SECRET_TOKEN not set — skipping webhook signature check');
+    logger.warn(
+      'ZOOM_WEBHOOK_SECRET_TOKEN not set — skipping webhook signature check',
+    );
     return true;
   }
   const message = `v0:${timestamp}:${rawBody}`;
@@ -90,6 +92,9 @@ export function handleZoomWebhookEvent(
     participantCount: obj.participant_count ?? 0,
   };
 
-  logger.info({ meetingId: result.meetingId, topic: result.topic }, 'Zoom meeting ended');
+  logger.info(
+    { meetingId: result.meetingId, topic: result.topic },
+    'Zoom meeting ended',
+  );
   return result;
 }

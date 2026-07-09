@@ -21,8 +21,10 @@ import crypto from 'crypto';
 import {
   readProspectMemory,
   registerActionHandler,
+  resolveOutboundBody,
   writeProspectMemory,
 } from './bdr-brain.js';
+import type { ComposedOutbound } from './bdr-brain.js';
 import {
   recordTouch,
   updateProspectNextAction,
@@ -39,74 +41,85 @@ function getTelegramChannel(): TelegramChannel | null {
   return null;
 }
 
-registerActionHandler('telegram_dm', async (prospect: BDRProspect) => {
-  let chatId: number | null = null;
-  if (prospect.enrichment) {
+registerActionHandler(
+  'telegram_dm',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    let chatId: number | null = null;
+    if (prospect.enrichment) {
+      try {
+        const e = JSON.parse(prospect.enrichment);
+        chatId = e.telegram_chat_id
+          ? parseInt(String(e.telegram_chat_id), 10)
+          : null;
+      } catch {
+        // not JSON
+      }
+    }
+
+    if (!chatId) {
+      logger.warn(
+        { prospectId: prospect.id },
+        'telegram_dm: no telegram_chat_id in enrichment — prospect must message the bot first',
+      );
+      return;
+    }
+
+    const channel = getTelegramChannel();
+    if (!channel) {
+      logger.warn('telegram_dm: Telegram channel not connected');
+      return;
+    }
+
+    const memory = readProspectMemory(prospect.id);
+    const touchCount = (memory.match(/telegram_dm/g) ?? []).length;
+    // Prefer the composed + quality-gated message; fall back to the template.
+    const message = resolveOutboundBody(composed, () =>
+      buildTelegramMessage(prospect, touchCount),
+    );
+    const jid = chatIdToJid(chatId);
+
     try {
-      const e = JSON.parse(prospect.enrichment);
-      chatId = e.telegram_chat_id
-        ? parseInt(String(e.telegram_chat_id), 10)
-        : null;
-    } catch {
-      // not JSON
+      await channel.sendMessage(jid, message);
+
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        channel: 'telegram',
+        direction: 'outbound',
+        content: message,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+
+      const ts = new Date().toISOString().slice(0, 10);
+      writeProspectMemory(
+        prospect.id,
+        memory +
+          `\n[${ts}] telegram_dm (touch ${touchCount + 1}):\n${message}\n`,
+      );
+
+      if (touchCount >= 2) {
+        updateProspectStage(prospect.id, 'not_interested');
+      } else {
+        const next = new Date();
+        next.setDate(next.getDate() + 3);
+        updateProspectNextAction(
+          prospect.id,
+          next.toISOString(),
+          'telegram_dm',
+        );
+        updateProspectStage(prospect.id, 'follow_up');
+      }
+
+      logger.info(
+        { prospectId: prospect.id, chatId, touchCount },
+        'Telegram DM sent',
+      );
+    } catch (err) {
+      logger.error({ err, prospectId: prospect.id }, 'telegram_dm failed');
     }
-  }
-
-  if (!chatId) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'telegram_dm: no telegram_chat_id in enrichment — prospect must message the bot first',
-    );
-    return;
-  }
-
-  const channel = getTelegramChannel();
-  if (!channel) {
-    logger.warn('telegram_dm: Telegram channel not connected');
-    return;
-  }
-
-  const memory = readProspectMemory(prospect.id);
-  const touchCount = (memory.match(/telegram_dm/g) ?? []).length;
-  const message = buildTelegramMessage(prospect, touchCount);
-  const jid = chatIdToJid(chatId);
-
-  try {
-    await channel.sendMessage(jid, message);
-
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      channel: 'telegram',
-      direction: 'outbound',
-      content: message,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
-
-    const ts = new Date().toISOString().slice(0, 10);
-    writeProspectMemory(
-      prospect.id,
-      memory + `\n[${ts}] telegram_dm (touch ${touchCount + 1}):\n${message}\n`,
-    );
-
-    if (touchCount >= 2) {
-      updateProspectStage(prospect.id, 'not_interested');
-    } else {
-      const next = new Date();
-      next.setDate(next.getDate() + 3);
-      updateProspectNextAction(prospect.id, next.toISOString(), 'telegram_dm');
-      updateProspectStage(prospect.id, 'follow_up');
-    }
-
-    logger.info(
-      { prospectId: prospect.id, chatId, touchCount },
-      'Telegram DM sent',
-    );
-  } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'telegram_dm failed');
-  }
-});
+  },
+);
 
 function buildTelegramMessage(
   prospect: BDRProspect,

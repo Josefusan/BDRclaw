@@ -12,13 +12,13 @@
 import crypto from 'crypto';
 
 import {
-  applyReplyClassification,
   readProspectMemory,
   registerActionHandler,
+  resolveOutboundBody,
   writeProspectMemory,
 } from './bdr-brain.js';
+import type { ComposedOutbound } from './bdr-brain.js';
 import {
-  getProspectById,
   recordTouch,
   updateProspectNextAction,
   updateProspectStage,
@@ -42,115 +42,131 @@ function getLinkedInChannel(): LinkedInChannel | null {
 
 // ── linkedin_connect ──────────────────────────────────────────────────────────
 
-registerActionHandler('linkedin_connect', async (prospect: BDRProspect) => {
-  if (!prospect.linkedin_url) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'linkedin_connect: no linkedin_url on prospect',
-    );
-    return;
-  }
+registerActionHandler(
+  'linkedin_connect',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    if (!prospect.linkedin_url) {
+      logger.warn(
+        { prospectId: prospect.id },
+        'linkedin_connect: no linkedin_url on prospect',
+      );
+      return;
+    }
 
-  const channel = getLinkedInChannel();
-  if (!channel) {
-    logger.warn('linkedin_connect: LinkedIn channel not connected');
-    return;
-  }
+    const channel = getLinkedInChannel();
+    if (!channel) {
+      logger.warn('linkedin_connect: LinkedIn channel not connected');
+      return;
+    }
 
-  // Build a short, personalized connection note
-  const note = buildConnectionNote(prospect);
-
-  try {
-    await channel.sendConnectionRequest(prospect.linkedin_url, note);
-
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      channel: 'linkedin',
-      direction: 'outbound',
-      subject: 'Connection request',
-      content: note ?? '(no note)',
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
-
-    // Schedule follow-up DM in 3 days if they accept
-    const followUp = new Date();
-    followUp.setDate(followUp.getDate() + 3);
-    updateProspectNextAction(
-      prospect.id,
-      followUp.toISOString(),
-      'linkedin_dm',
+    // Prefer the composed + gated note; fall back to the template.
+    const note = resolveOutboundBody(composed, () =>
+      buildConnectionNote(prospect),
     );
 
-    updateProspectStage(prospect.id, 'outreach_sent');
-    logger.info(
-      { prospectId: prospect.id },
-      'LinkedIn connection request sent',
-    );
-  } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'linkedin_connect failed');
-  }
-});
+    try {
+      await channel.sendConnectionRequest(prospect.linkedin_url, note);
+
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        channel: 'linkedin',
+        direction: 'outbound',
+        subject: 'Connection request',
+        content: note ?? '(no note)',
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+
+      // Schedule follow-up DM in 3 days if they accept
+      const followUp = new Date();
+      followUp.setDate(followUp.getDate() + 3);
+      updateProspectNextAction(
+        prospect.id,
+        followUp.toISOString(),
+        'linkedin_dm',
+      );
+
+      updateProspectStage(prospect.id, 'outreach_sent');
+      logger.info(
+        { prospectId: prospect.id },
+        'LinkedIn connection request sent',
+      );
+    } catch (err) {
+      logger.error({ err, prospectId: prospect.id }, 'linkedin_connect failed');
+    }
+  },
+);
 
 // ── linkedin_dm ───────────────────────────────────────────────────────────────
 
-registerActionHandler('linkedin_dm', async (prospect: BDRProspect) => {
-  if (!prospect.linkedin_url) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'linkedin_dm: no linkedin_url on prospect',
-    );
-    return;
-  }
-
-  const channel = getLinkedInChannel();
-  if (!channel) {
-    logger.warn('linkedin_dm: LinkedIn channel not connected');
-    return;
-  }
-
-  const memory = readProspectMemory(prospect.id);
-  const touchCount = (memory.match(/linkedin_dm/g) ?? []).length;
-  const message = buildDMMessage(prospect, touchCount);
-  const jid = profileUrlToJid(prospect.linkedin_url);
-
-  try {
-    await channel.sendMessage(jid, message);
-
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      channel: 'linkedin',
-      direction: 'outbound',
-      content: message,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
-
-    // Append to prospect memory
-    const ts = new Date().toISOString().slice(0, 10);
-    writeProspectMemory(
-      prospect.id,
-      memory + `\n[${ts}] linkedin_dm (touch ${touchCount + 1}):\n${message}\n`,
-    );
-
-    // Final DM — mark follow_up exhausted after 3 touches
-    if (touchCount >= 2) {
-      updateProspectStage(prospect.id, 'not_interested');
-      logger.info({ prospectId: prospect.id }, 'LinkedIn sequence exhausted');
-    } else {
-      const next = new Date();
-      next.setDate(next.getDate() + 5);
-      updateProspectNextAction(prospect.id, next.toISOString(), 'linkedin_dm');
-      updateProspectStage(prospect.id, 'follow_up');
+registerActionHandler(
+  'linkedin_dm',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    if (!prospect.linkedin_url) {
+      logger.warn(
+        { prospectId: prospect.id },
+        'linkedin_dm: no linkedin_url on prospect',
+      );
+      return;
     }
 
-    logger.info({ prospectId: prospect.id, touchCount }, 'LinkedIn DM sent');
-  } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'linkedin_dm failed');
-  }
-});
+    const channel = getLinkedInChannel();
+    if (!channel) {
+      logger.warn('linkedin_dm: LinkedIn channel not connected');
+      return;
+    }
+
+    const memory = readProspectMemory(prospect.id);
+    const touchCount = (memory.match(/linkedin_dm/g) ?? []).length;
+    // Prefer the composed + quality-gated message; fall back to the template.
+    const message = resolveOutboundBody(composed, () =>
+      buildDMMessage(prospect, touchCount),
+    );
+    const jid = profileUrlToJid(prospect.linkedin_url);
+
+    try {
+      await channel.sendMessage(jid, message);
+
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        channel: 'linkedin',
+        direction: 'outbound',
+        content: message,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+
+      // Append to prospect memory
+      const ts = new Date().toISOString().slice(0, 10);
+      writeProspectMemory(
+        prospect.id,
+        memory +
+          `\n[${ts}] linkedin_dm (touch ${touchCount + 1}):\n${message}\n`,
+      );
+
+      // Final DM — mark follow_up exhausted after 3 touches
+      if (touchCount >= 2) {
+        updateProspectStage(prospect.id, 'not_interested');
+        logger.info({ prospectId: prospect.id }, 'LinkedIn sequence exhausted');
+      } else {
+        const next = new Date();
+        next.setDate(next.getDate() + 5);
+        updateProspectNextAction(
+          prospect.id,
+          next.toISOString(),
+          'linkedin_dm',
+        );
+        updateProspectStage(prospect.id, 'follow_up');
+      }
+
+      logger.info({ prospectId: prospect.id, touchCount }, 'LinkedIn DM sent');
+    } catch (err) {
+      logger.error({ err, prospectId: prospect.id }, 'linkedin_dm failed');
+    }
+  },
+);
 
 // ── Message builders ──────────────────────────────────────────────────────────
 

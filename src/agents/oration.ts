@@ -17,7 +17,13 @@ export interface OrationResult {
   response: string;
   speak: boolean;
   action?: {
-    type: 'navigate' | 'addLead' | 'createCampaign' | 'readStats' | 'updateGoal' | 'searchLeads';
+    type:
+      | 'navigate'
+      | 'addLead'
+      | 'createCampaign'
+      | 'readStats'
+      | 'updateGoal'
+      | 'searchLeads';
     payload: Record<string, unknown>;
   };
 }
@@ -42,7 +48,10 @@ Keep responses concise and actionable. Speak like a sharp, helpful colleague.
 Respond with ONLY the JSON object, no markdown fences.`;
 
 export async function processOration(text: string): Promise<OrationResult> {
-  logger.info({ textLen: text.length, isGoalCmd: text.startsWith('/goal') }, 'Processing oration');
+  logger.info(
+    { textLen: text.length, isGoalCmd: text.startsWith('/goal') },
+    'Processing oration',
+  );
 
   const msg = await ai.messages.create({
     model: 'claude-sonnet-4-6',
@@ -61,7 +70,8 @@ export async function processOration(text: string): Promise<OrationResult> {
   } catch (err) {
     logger.error({ err, raw: raw.text }, 'Failed to parse oration JSON');
     return {
-      response: "I heard you, but I'm having trouble processing that. Could you try again?",
+      response:
+        "I heard you, but I'm having trouble processing that. Could you try again?",
       speak: true,
     };
   }

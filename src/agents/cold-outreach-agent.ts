@@ -16,7 +16,13 @@ const ai = new Anthropic();
 export interface OutreachStep {
   stepNumber: number;
   delayDays: number;
-  channel: 'email' | 'linkedin' | 'linkedin_connect' | 'sms' | 'twitter' | 'whatsapp';
+  channel:
+    | 'email'
+    | 'linkedin'
+    | 'linkedin_connect'
+    | 'sms'
+    | 'twitter'
+    | 'whatsapp';
   subject?: string;
   message: string;
   note: string; // rationale for this step
@@ -41,9 +47,14 @@ export interface OutreachAgentInput {
   tone?: string;
 }
 
-export async function runColdOutreachAgent(input: OutreachAgentInput): Promise<OutreachStrategyResult> {
+export async function runColdOutreachAgent(
+  input: OutreachAgentInput,
+): Promise<OutreachStrategyResult> {
   const start = Date.now();
-  logger.info({ target: input.targetDescription }, 'Cold Outreach Agent starting');
+  logger.info(
+    { target: input.targetDescription },
+    'Cold Outreach Agent starting',
+  );
 
   const businessContext = await getSecondBrainSummary();
 
@@ -87,7 +98,10 @@ Messages must be human-sounding. No {{placeholder}} left unfilled at runtime. Va
   const raw = msg.content[0];
   if (raw.type !== 'text') throw new Error('Unexpected AI response type');
 
-  let parsed: Omit<OutreachStrategyResult, 'runAt' | 'durationMs' | 'targetDescription'>;
+  let parsed: Omit<
+    OutreachStrategyResult,
+    'runAt' | 'durationMs' | 'targetDescription'
+  >;
   try {
     parsed = JSON.parse(raw.text);
   } catch {
@@ -102,6 +116,9 @@ Messages must be human-sounding. No {{placeholder}} left unfilled at runtime. Va
     ...parsed,
   };
 
-  logger.info({ steps: result.steps.length, sequence: result.sequenceName }, 'Cold Outreach Agent complete');
+  logger.info(
+    { steps: result.steps.length, sequence: result.sequenceName },
+    'Cold Outreach Agent complete',
+  );
   return result;
 }

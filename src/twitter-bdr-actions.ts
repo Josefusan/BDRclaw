@@ -14,8 +14,10 @@ import { TwitterApi } from 'twitter-api-v2';
 import {
   readProspectMemory,
   registerActionHandler,
+  resolveOutboundBody,
   writeProspectMemory,
 } from './bdr-brain.js';
+import type { ComposedOutbound } from './bdr-brain.js';
 import {
   recordTouch,
   updateProspectNextAction,
@@ -26,94 +28,101 @@ import { logger } from './logger.js';
 
 // ── twitter_dm ────────────────────────────────────────────────────────────────
 
-registerActionHandler('twitter_dm', async (prospect: BDRProspect) => {
-  if (process.env.TWITTER_ENABLED !== 'true') return;
+registerActionHandler(
+  'twitter_dm',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    if (process.env.TWITTER_ENABLED !== 'true') return;
 
-  // Extract twitter handle from enrichment JSON
-  let twitterUserId: string | null = null;
-  let twitterUsername: string | null = null;
-  if (prospect.enrichment) {
-    try {
-      const enrichment = JSON.parse(prospect.enrichment);
-      twitterUserId = enrichment.twitter_user_id ?? null;
-      twitterUsername =
-        enrichment.twitter_handle ?? enrichment.twitter_username ?? null;
-    } catch {
-      // enrichment not JSON
+    // Extract twitter handle from enrichment JSON
+    let twitterUserId: string | null = null;
+    let twitterUsername: string | null = null;
+    if (prospect.enrichment) {
+      try {
+        const enrichment = JSON.parse(prospect.enrichment);
+        twitterUserId = enrichment.twitter_user_id ?? null;
+        twitterUsername =
+          enrichment.twitter_handle ?? enrichment.twitter_username ?? null;
+      } catch {
+        // enrichment not JSON
+      }
     }
-  }
 
-  if (!twitterUserId && !twitterUsername) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'twitter_dm: no twitter_user_id or twitter_handle in enrichment, skipping',
-    );
-    return;
-  }
-
-  const client = new TwitterApi({
-    appKey: process.env.TWITTER_API_KEY!,
-    appSecret: process.env.TWITTER_API_SECRET!,
-    accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-    accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-  }).readWrite;
-
-  // Resolve username → userId if we only have a handle
-  if (!twitterUserId && twitterUsername) {
-    try {
-      const user = await client.v2.userByUsername(
-        twitterUsername.replace(/^@/, ''),
-      );
-      twitterUserId = user.data.id;
-    } catch (err) {
+    if (!twitterUserId && !twitterUsername) {
       logger.warn(
-        { err, twitterUsername },
-        'twitter_dm: could not resolve user ID',
+        { prospectId: prospect.id },
+        'twitter_dm: no twitter_user_id or twitter_handle in enrichment, skipping',
       );
       return;
     }
-  }
 
-  const memory = readProspectMemory(prospect.id);
-  const touchCount = (memory.match(/twitter_dm/g) ?? []).length;
-  const message = buildTwitterDM(prospect, touchCount);
+    const client = new TwitterApi({
+      appKey: process.env.TWITTER_API_KEY!,
+      appSecret: process.env.TWITTER_API_SECRET!,
+      accessToken: process.env.TWITTER_ACCESS_TOKEN!,
+      accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
+    }).readWrite;
 
-  try {
-    await client.v2.sendDmToParticipant(twitterUserId!, { text: message });
-
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      channel: 'twitter',
-      direction: 'outbound',
-      content: message,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
-
-    const ts = new Date().toISOString().slice(0, 10);
-    writeProspectMemory(
-      prospect.id,
-      memory + `\n[${ts}] twitter_dm (touch ${touchCount + 1}):\n${message}\n`,
-    );
-
-    if (touchCount >= 1) {
-      updateProspectStage(prospect.id, 'not_interested');
-    } else {
-      const next = new Date();
-      next.setDate(next.getDate() + 4);
-      updateProspectNextAction(prospect.id, next.toISOString(), 'twitter_dm');
-      updateProspectStage(prospect.id, 'follow_up');
+    // Resolve username → userId if we only have a handle
+    if (!twitterUserId && twitterUsername) {
+      try {
+        const user = await client.v2.userByUsername(
+          twitterUsername.replace(/^@/, ''),
+        );
+        twitterUserId = user.data.id;
+      } catch (err) {
+        logger.warn(
+          { err, twitterUsername },
+          'twitter_dm: could not resolve user ID',
+        );
+        return;
+      }
     }
 
-    logger.info(
-      { prospectId: prospect.id, twitterUserId, touchCount },
-      'Twitter DM sent',
+    const memory = readProspectMemory(prospect.id);
+    const touchCount = (memory.match(/twitter_dm/g) ?? []).length;
+    // Prefer the composed + quality-gated message; fall back to the template.
+    const message = resolveOutboundBody(composed, () =>
+      buildTwitterDM(prospect, touchCount),
     );
-  } catch (err) {
-    logger.error({ err, prospectId: prospect.id }, 'twitter_dm failed');
-  }
-});
+
+    try {
+      await client.v2.sendDmToParticipant(twitterUserId!, { text: message });
+
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        channel: 'twitter',
+        direction: 'outbound',
+        content: message,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+
+      const ts = new Date().toISOString().slice(0, 10);
+      writeProspectMemory(
+        prospect.id,
+        memory +
+          `\n[${ts}] twitter_dm (touch ${touchCount + 1}):\n${message}\n`,
+      );
+
+      if (touchCount >= 1) {
+        updateProspectStage(prospect.id, 'not_interested');
+      } else {
+        const next = new Date();
+        next.setDate(next.getDate() + 4);
+        updateProspectNextAction(prospect.id, next.toISOString(), 'twitter_dm');
+        updateProspectStage(prospect.id, 'follow_up');
+      }
+
+      logger.info(
+        { prospectId: prospect.id, twitterUserId, touchCount },
+        'Twitter DM sent',
+      );
+    } catch (err) {
+      logger.error({ err, prospectId: prospect.id }, 'twitter_dm failed');
+    }
+  },
+);
 
 // ── Message builder ───────────────────────────────────────────────────────────
 

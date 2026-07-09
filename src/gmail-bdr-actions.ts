@@ -19,9 +19,9 @@ import {
   registerActionHandler,
   writeProspectMemory,
 } from './bdr-brain.js';
+import type { ComposedOutbound } from './bdr-brain.js';
 import {
   getAccountById,
-  getProspectById,
   incrementAccountSends,
   recordTouch,
   updateProspectNextAction,
@@ -66,115 +66,138 @@ function getThread(
 
 // ── send_email ────────────────────────────────────────────────────────────────
 
-registerActionHandler('send_email', async (prospect: BDRProspect) => {
-  const channel = getGmailChannel();
-  if (!channel) {
-    logger.warn('send_email: Gmail channel not available — install /add-gmail');
-    return;
-  }
+registerActionHandler(
+  'send_email',
+  async (prospect: BDRProspect, composed?: ComposedOutbound) => {
+    const channel = getGmailChannel();
+    if (!channel) {
+      logger.warn(
+        'send_email: Gmail channel not available — install /add-gmail',
+      );
+      return;
+    }
 
-  if (!prospect.email) {
-    logger.warn(
-      { prospectId: prospect.id },
-      'send_email: prospect has no email address, skipping',
-    );
-    return;
-  }
+    if (!prospect.email) {
+      logger.warn(
+        { prospectId: prospect.id },
+        'send_email: prospect has no email address, skipping',
+      );
+      return;
+    }
 
-  // Determine which account to send from
-  const account = prospect.assigned_account_id
-    ? getAccountById(prospect.assigned_account_id)
-    : null;
-  const accountIndex = channel.accountIndexFromKey(account?.credentials_key);
+    // Determine which account to send from
+    const account = prospect.assigned_account_id
+      ? getAccountById(prospect.assigned_account_id)
+      : null;
+    const accountIndex = channel.accountIndexFromKey(account?.credentials_key);
 
-  // Check daily send limit
-  if (account && account.sends_today >= account.daily_send_limit) {
-    logger.warn(
-      { prospectId: prospect.id, accountId: account.id },
-      'send_email: daily send limit reached, deferring to tomorrow',
-    );
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(6, 0, 0, 0);
-    updateProspectNextAction(prospect.id, tomorrow.toISOString(), 'send_email');
-    return;
-  }
+    // Check daily send limit
+    if (account && account.sends_today >= account.daily_send_limit) {
+      logger.warn(
+        { prospectId: prospect.id, accountId: account.id },
+        'send_email: daily send limit reached, deferring to tomorrow',
+      );
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(6, 0, 0, 0);
+      updateProspectNextAction(
+        prospect.id,
+        tomorrow.toISOString(),
+        'send_email',
+      );
+      return;
+    }
 
-  // Get next sequence step
-  const email = getNextEmail(prospect);
-  if (!email) {
-    logger.info(
-      { prospectId: prospect.id },
-      'send_email: sequence exhausted, marking not_interested',
-    );
-    updateProspectStage(prospect.id, 'not_interested');
-    return;
-  }
+    // Get next sequence step (also the subject/metadata source for composed sends)
+    const email = getNextEmail(prospect);
+    const composedBody = composed?.body?.trim();
+    if (!email && !composedBody) {
+      logger.info(
+        { prospectId: prospect.id },
+        'send_email: sequence exhausted, marking not_interested',
+      );
+      updateProspectStage(prospect.id, 'not_interested');
+      return;
+    }
 
-  // Thread tracking for reply threading
-  const existingThread = getThread(prospect.id);
+    // Prefer the composed + quality-gated message; fall back to the sequence email.
+    const outboundSubject =
+      composed?.subject ??
+      email?.subject ??
+      `Quick question, ${prospect.name.split(' ')[0]}`;
+    const outboundBody = composedBody ?? email!.body;
 
-  try {
-    const result = await channel.sendBDREmail({
-      to: prospect.email,
-      subject: email.subject,
-      body: email.body,
-      accountIndex,
-      threadId: existingThread?.threadId,
-      inReplyTo: existingThread?.messageId,
-    });
+    // Thread tracking for reply threading
+    const existingThread = getThread(prospect.id);
 
-    // Save thread for future follow-ups
-    saveThread(prospect.id, result.threadId, result.messageId);
+    try {
+      const result = await channel.sendBDREmail({
+        to: prospect.email,
+        subject: outboundSubject,
+        body: outboundBody,
+        accountIndex,
+        threadId: existingThread?.threadId,
+        inReplyTo: existingThread?.messageId,
+      });
 
-    // Record the touch
-    recordTouch({
-      id: crypto.randomUUID(),
-      prospect_id: prospect.id,
-      account_id: account?.id,
-      channel: 'email',
-      direction: 'outbound',
-      subject: email.subject,
-      content: email.body,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
+      // Save thread for future follow-ups
+      saveThread(prospect.id, result.threadId, result.messageId);
 
-    // Increment account send counter
-    if (account) incrementAccountSends(account.id);
+      // Record the touch
+      recordTouch({
+        id: crypto.randomUUID(),
+        prospect_id: prospect.id,
+        account_id: account?.id,
+        channel: 'email',
+        direction: 'outbound',
+        subject: outboundSubject,
+        content: outboundBody,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
 
-    // Update prospect stage
-    const nextStage =
-      prospect.stage === 'identified' ? 'outreach_sent' : 'follow_up';
-    updateProspectStage(prospect.id, nextStage);
+      // Increment account send counter
+      if (account) incrementAccountSends(account.id);
 
-    // Schedule next follow-up (3 days out)
-    const nextDate = new Date();
-    nextDate.setDate(nextDate.getDate() + 3);
-    updateProspectNextAction(prospect.id, nextDate.toISOString(), 'send_email');
+      // Update prospect stage
+      const nextStage =
+        prospect.stage === 'identified' ? 'outreach_sent' : 'follow_up';
+      updateProspectStage(prospect.id, nextStage);
 
-    // Update prospect memory
-    appendSequenceEntry(
-      prospect.id,
-      email.stepNumber,
-      email.subject,
-      email.isBreakup ? '(breakup email)' : undefined,
-    );
+      // Schedule next follow-up (3 days out)
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + 3);
+      updateProspectNextAction(
+        prospect.id,
+        nextDate.toISOString(),
+        'send_email',
+      );
 
-    logger.info(
-      {
-        prospectId: prospect.id,
-        step: email.stepNumber,
-        isBreakup: email.isBreakup,
-        threadId: result.threadId,
-      },
-      'Email sent',
-    );
-  } catch (err) {
-    logger.error({ prospectId: prospect.id, err }, 'Failed to send email');
-    throw err;
-  }
-});
+      // Update prospect memory (step metadata comes from the sequence; a purely
+      // composed send with no sequence step logs as step 0, non-breakup).
+      appendSequenceEntry(
+        prospect.id,
+        email?.stepNumber ?? 0,
+        outboundSubject,
+        email?.isBreakup ? '(breakup email)' : undefined,
+      );
+
+      logger.info(
+        {
+          prospectId: prospect.id,
+          step: email?.stepNumber ?? 0,
+          isBreakup: email?.isBreakup ?? false,
+          composed: !!composedBody,
+          threadId: result.threadId,
+        },
+        'Email sent',
+      );
+    } catch (err) {
+      logger.error({ prospectId: prospect.id, err }, 'Failed to send email');
+      throw err;
+    }
+  },
+);
 
 // ── classify_reply ────────────────────────────────────────────────────────────
 

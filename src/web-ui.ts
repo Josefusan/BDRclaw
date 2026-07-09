@@ -61,8 +61,14 @@ import {
   syncProspects as syncSalesforge,
   getSalesforgeSequences,
 } from './integrations/salesforge.js';
-import { verifyZoomWebhook, handleZoomWebhookEvent } from './integrations/zoom.js';
-import { isOtterConfigured, getOtterTranscripts } from './integrations/otter.js';
+import {
+  verifyZoomWebhook,
+  handleZoomWebhookEvent,
+} from './integrations/zoom.js';
+import {
+  isOtterConfigured,
+  getOtterTranscripts,
+} from './integrations/otter.js';
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
@@ -669,8 +675,14 @@ function handleApi(
             salesforgeActive ? getSalesforgeSequences() : Promise.resolve([]),
           ]);
           json(res, {
-            instantly: { active: instantlyActive, campaigns: instantlyCampaigns },
-            salesforge: { active: salesforgeActive, sequences: salesforgeSequences },
+            instantly: {
+              active: instantlyActive,
+              campaigns: instantlyCampaigns,
+            },
+            salesforge: {
+              active: salesforgeActive,
+              sequences: salesforgeSequences,
+            },
           });
         } catch (err) {
           res.writeHead(500);
@@ -727,7 +739,8 @@ function handleApi(
     if (method === 'POST' && pathname === '/api/zoom/webhook') {
       readBody(req, (body) => {
         try {
-          const timestamp = (req.headers['x-zm-request-timestamp'] as string) ?? '';
+          const timestamp =
+            (req.headers['x-zm-request-timestamp'] as string) ?? '';
           const signature = (req.headers['x-zm-signature'] as string) ?? '';
           if (!verifyZoomWebhook(body, timestamp, signature)) {
             res.writeHead(401);
@@ -738,10 +751,14 @@ function handleApi(
           // Handle URL validation challenge
           if (payload.event === 'endpoint.url_validation') {
             const secret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? '';
-            const hashForValidate = crypto.createHmac('sha256', secret)
+            const hashForValidate = crypto
+              .createHmac('sha256', secret)
               .update(payload.payload.plainToken)
               .digest('hex');
-            json(res, { plainToken: payload.payload.plainToken, encryptedToken: hashForValidate });
+            json(res, {
+              plainToken: payload.payload.plainToken,
+              encryptedToken: hashForValidate,
+            });
             return;
           }
           const result = handleZoomWebhookEvent(payload);

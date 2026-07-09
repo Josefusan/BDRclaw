@@ -13,7 +13,9 @@ let apiKey: string | null = null;
 export function registerSalesforge(): void {
   const key = process.env.SALESFORGE_API_KEY;
   if (!key) {
-    logger.debug('SALESFORGE_API_KEY not set — Salesforge integration disabled');
+    logger.debug(
+      'SALESFORGE_API_KEY not set — Salesforge integration disabled',
+    );
     return;
   }
   apiKey = key;
@@ -35,7 +37,7 @@ async function request<T>(
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: body != null ? JSON.stringify(body) : undefined,
@@ -57,7 +59,10 @@ export interface SalesforgeSequence {
 }
 
 export async function getSalesforgeSequences(): Promise<SalesforgeSequence[]> {
-  const data = await request<{ data: SalesforgeSequence[] }>('GET', '/sequences');
+  const data = await request<{ data: SalesforgeSequence[] }>(
+    'GET',
+    '/sequences',
+  );
   return data.data ?? [];
 }
 
