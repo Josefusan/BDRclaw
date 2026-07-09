@@ -56,7 +56,7 @@ Everything else is polish: `whatsapp_dm`/`instagram_dm` action handlers missing,
 | 1.2 | **Fix Break A**: add `getProspectByContact()` (phone/email/handle/chat-id) to `bdr-db.ts`; route `channelOpts.onMessage` → `processReply()` after `storeMessage()`. Guards: idempotency watermark (first boot will replay stored messages), dedupe double CRM push (reply-handler + `updateProspectStage` both push) | ISC-16..20,31,32 | 1–1.5 days |
 | 1.3 | **Deterministic compliance pre-gate**: STOP/UNSUBSCRIBE keyword handling in webhook path BEFORE any Claude call; global suppression list checked inside `sendMessage` path | ISC-17 | 0.5 day |
 | 1.4 | One **end-to-end edge test**: enroll → compose → gate → assert wire payload === gated body → simulated reply → stage change → CRM event. This is the test that would have caught both breaks | ISC-15 test | 0.5 day |
-| 1.5 | Fix ISC-13: `'blocked'` not `'bounced'` (`loop.ts:224`); delete orphaned `campaign-runner.ts`; remove unused imports (lint passes) | ISC-13 | 1h |
+| 1.5 | Fix ISC-13: `'blocked'` not `'bounced'` (`loop.ts:224`); retire `campaign-runner.ts` properly — `runCampaignTick` is never called, but `index.ts:495` registers it and `loop.ts:33` imports `personalize` from it, so relocate `personalize` + remove the registration before removing the file (naive delete breaks the build); remove unused imports (lint passes) | ISC-13 | 2h |
 
 ### Phase 2 — Deploy (unblocks webhooks)
 | # | Item | ISCs | Effort |
@@ -73,12 +73,15 @@ Everything else is polish: `whatsapp_dm`/`instagram_dm` action handlers missing,
 | 3.3 | TCPA 2-touch cap: count from `bdr_touches` (not regex over memory text, current `sms-bdr-actions.ts:57` approach) | ISA constraint | 2h |
 | 3.4 | Consent/opt-out event log (litigation defense) | new ISC | 2h |
 
-### Phase 4 — LinkedIn via Unipile
+### Phase 4 — LinkedIn via Patchright self-hosted *(DECIDED 2026-07-08: Joseph chose self-hosted over Unipile)*
+Rationale: lowest detection surface (runs in the user's real browser, own machine, own residential IP — the posture LinkedIn's 2026 enforcement treats most leniently), zero per-account SaaS fee, and it evolves the code that already exists rather than adding a vendor dependency. Cost: ownership of the selector-drift + anti-bot arms race.
 | # | Item | ISCs | Effort |
 |---|---|---|---|
-| 4.1 | `unipile-node-sdk`: implement LinkedIn channel behind existing channel interface (DMs, connection requests, reply webhooks); hosted auth flow | ISC-29 | 1–2 days |
-| 4.2 | Warm-up ramp + randomized pacing per Unipile provider-limits guidance; keep 20/50 daily caps | ISA constraint | 0.5 day |
-| 4.3 | Keep Playwright impl as fallback; swap `playwright` → `patchright` when touched | — | later |
+| 4.1 | Swap `playwright` → **`patchright`** (drop-in fork, ~same API, patches 40+ fingerprint properties vs playwright-stealth's ~12). Update `src/channels/linkedin.ts` import + `linkedin-auth` setup | ISA constraint | 0.5 day |
+| 4.2 | Human-pacing engine: randomized 300–2000ms micro-delays, 45–120s between profile views/messages, `headless:false` + Xvfb on Linux | ISA constraint | 0.5 day |
+| 4.3 | Keep 20 connections/day + 50 DMs/day caps (already enforced `linkedin.ts:105,129`); add account-age warm-up ramp for <150-connection accounts; fingerprint hygiene per account | ISA constraint | 0.5 day |
+| 4.4 | Robust selector-drift handling (LinkedIn changes DOM frequently — the main maintenance tax); wire LinkedIn inbound poll → `processReply` (part of Break A fix, Phase 1.2) | ISC-32 | 0.5 day |
+| — | *Deferred option:* abstract behind the channel interface so Unipile (~$55/mo, faster) can drop in later if self-hosted maintenance proves too heavy | — | later |
 
 ### Phase 5 — Reposition X + WhatsApp honestly
 | # | Item | Effort |
@@ -106,9 +109,12 @@ SPF + DKIM + DMARC records on the sending domain; gradual volume warmup (or dele
 - **War Room patterns** (vault + `~/war-room` constitution): one anchor file per sub-agent role → consider per-agent context docs later; mandatory risk gate before user approval → hot-lead notifications should propose, not auto-commit.
 - **No prior BDRclaw planning notes exist in the vault** — the repo's ISA/ROADMAP are the freshest thinking. This plan is now the bridge between them and 2026 platform reality.
 
-## 5. Decisions needed (Joseph)
+## 5. Decisions — RESOLVED 2026-07-08
 
-1. **LinkedIn**: Unipile ($55/mo, ships this week) vs Patchright self-hosted (free, 1–2 wks, you own the arms race)? Recommendation: Unipile now, interface-abstracted for a later swap.
-2. **Scope confirmation**: accept Email+SMS+LinkedIn as the cold trio, X/WhatsApp as warm-reply channels? (Platform policy forces this; the landing page currently promises cold outreach on all of them.)
-3. **Twilio registration**: need an EIN ≥30 days old for the brand registration — does Mises Group's (or another entity's) EIN get used, and can it start this week?
-4. **ISA constraint edit**: project ISA says "Playwright used only for LinkedIn automation" — Unipile replaces this; ISA Constraints + Decisions need an entry when chosen.
+1. **LinkedIn**: ✅ **Patchright self-hosted** (free, ~2 days, lowest ban surface, evolves existing Playwright code). Unipile kept as a documented later-swap option behind the channel interface. → Phase 4.
+2. **Channel scope**: ✅ **Cold trio (Email + SMS + LinkedIn) + X/WhatsApp as warm/reply channels.** Landing-page copy needs updating to stop promising cold outreach on X/WhatsApp/Instagram. → new Phase 7.
+3. **Twilio**: ✅ **Start 10DLC registration this week with Joseph's EIN.** See `docs/TWILIO-10DLC-SETUP.md`. Toll-free bridge in parallel.
+4. **Push**: ✅ Committed swarm work + plan pushed to GitHub `main` (68e64df).
+
+### Phase 7 — Landing-page honesty pass *(new, from scope decision)*
+Update `public/index.html` / `index.html`: reframe X, WhatsApp, Instagram as "warm follow-up & reply" channels; keep Email/SMS/LinkedIn as the cold-outreach headline. ~2h. Prevents a promise the platform policies won't let the product keep.
