@@ -166,6 +166,46 @@ function createSchema(database: Database.Database): void {
       created_at  TEXT NOT NULL,
       updated_at  TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS bdr_second_brain (
+      key         TEXT PRIMARY KEY,
+      value       TEXT NOT NULL DEFAULT '',
+      updated_at  TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS bdr_closed_deals (
+      id             TEXT PRIMARY KEY,
+      prospect_id    TEXT,
+      prospect_name  TEXT NOT NULL,
+      company        TEXT NOT NULL,
+      amount         REAL NOT NULL DEFAULT 0,
+      closed_at      TEXT NOT NULL,
+      notes          TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_deal_closed_at ON bdr_closed_deals(closed_at);
+
+    CREATE TABLE IF NOT EXISTS bdr_documents (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      stage        TEXT NOT NULL DEFAULT 'general',
+      mime_type    TEXT NOT NULL,
+      size         INTEGER NOT NULL DEFAULT 0,
+      content      TEXT NOT NULL DEFAULT '',
+      uploaded_at  TEXT NOT NULL,
+      notes        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_doc_stage ON bdr_documents(stage);
+
+    CREATE TABLE IF NOT EXISTS bdr_agent_runs (
+      id          TEXT PRIMARY KEY,
+      agent       TEXT NOT NULL,
+      run_at      TEXT NOT NULL,
+      duration_ms INTEGER,
+      status      TEXT NOT NULL DEFAULT 'ok',
+      result      TEXT,
+      error       TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_run_agent ON bdr_agent_runs(agent, run_at);
   `);
 }
 

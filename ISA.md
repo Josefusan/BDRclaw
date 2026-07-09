@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-06-24
+> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-06-24T18:30:00Z | **Iteration:** v1.1 — Docs, Meetings, Oration, AI Email platforms, brand logos
 
 ---
 

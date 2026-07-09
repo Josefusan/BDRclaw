@@ -49,6 +49,20 @@ import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
 import type { CampaignStatus, ProspectStage } from './bdr-types.js';
+import { analyzeMeeting } from './agents/meeting-intelligence.js';
+import { processOration } from './agents/oration.js';
+import {
+  isInstantlyConfigured,
+  syncProspects as syncInstantly,
+  getInstantlyCampaigns,
+} from './integrations/instantly.js';
+import {
+  isSalesforgeConfigured,
+  syncProspects as syncSalesforge,
+  getSalesforgeSequences,
+} from './integrations/salesforge.js';
+import { verifyZoomWebhook, handleZoomWebhookEvent } from './integrations/zoom.js';
+import { isOtterConfigured, getOtterTranscripts } from './integrations/otter.js';
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
@@ -72,7 +86,11 @@ function route(req: http.IncomingMessage, res: http.ServerResponse): void {
   }
 
   // Static files from public/
-  if (method === 'GET' && !pathname.startsWith('/api/') && !pathname.startsWith('/webhooks/')) {
+  if (
+    method === 'GET' &&
+    !pathname.startsWith('/api/') &&
+    !pathname.startsWith('/webhooks/')
+  ) {
     const filePath =
       pathname === '/' || pathname === '/index.html'
         ? path.join(PUBLIC_DIR, 'index.html')
@@ -89,7 +107,9 @@ function route(req: http.IncomingMessage, res: http.ServerResponse): void {
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
       };
-      res.writeHead(200, { 'Content-Type': (mime[ext] ?? 'text/plain') + '; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': (mime[ext] ?? 'text/plain') + '; charset=utf-8',
+      });
       fs.createReadStream(filePath).pipe(res);
       return;
     }
@@ -203,9 +223,12 @@ function handleApi(
     if (method === 'GET' && pathname === '/api/channels/status') {
       json(res, {
         email: {
-          active: !!(process.env.GMAIL_ACCOUNT_1 || process.env.GMAIL_ACCOUNT_2),
+          active: !!(
+            process.env.GMAIL_ACCOUNT_1 || process.env.GMAIL_ACCOUNT_2
+          ),
           label: 'Gmail',
-          account: process.env.GMAIL_ACCOUNT_1 ?? process.env.GMAIL_ACCOUNT_2 ?? null,
+          account:
+            process.env.GMAIL_ACCOUNT_1 ?? process.env.GMAIL_ACCOUNT_2 ?? null,
           envKey: 'GMAIL_ACCOUNT_1',
           setupSteps: [
             'Go to your Google account → Security → App Passwords',
@@ -226,7 +249,9 @@ function handleApi(
           ],
         },
         sms: {
-          active: process.env.SMS_ENABLED === 'true' && !!process.env.TWILIO_ACCOUNT_SID,
+          active:
+            process.env.SMS_ENABLED === 'true' &&
+            !!process.env.TWILIO_ACCOUNT_SID,
           label: 'SMS',
           account: process.env.TWILIO_PHONE_NUMBER ?? null,
           envKey: 'SMS_ENABLED',
@@ -273,7 +298,9 @@ function handleApi(
           ],
         },
         instagram: {
-          active: process.env.INSTAGRAM_ENABLED === 'true' && !!process.env.INSTAGRAM_ACCESS_TOKEN,
+          active:
+            process.env.INSTAGRAM_ENABLED === 'true' &&
+            !!process.env.INSTAGRAM_ACCESS_TOKEN,
           label: 'Instagram',
           account: process.env.INSTAGRAM_ACCOUNT_ID ?? null,
           envKey: 'INSTAGRAM_ENABLED',
@@ -569,6 +596,175 @@ function handleApi(
         try {
           const contacts = await pullFromCRMs();
           json(res, { contacts, count: contacts.length });
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      })();
+      return;
+    }
+
+    // ── Meeting Intelligence ──────────────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/meetings/analyze') {
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { transcript, topic, attendees, myRole } = JSON.parse(body);
+            if (!transcript) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'transcript required' }));
+              return;
+            }
+            const analysis = await analyzeMeeting(
+              transcript,
+              topic ?? '',
+              attendees ?? '',
+              myRole ?? '',
+            );
+            json(res, analysis);
+          } catch (err) {
+            logger.error({ err }, 'Meeting analysis error');
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    // ── Oration ───────────────────────────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/oration') {
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { text } = JSON.parse(body);
+            if (!text) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'text required' }));
+              return;
+            }
+            const result = await processOration(text);
+            json(res, result);
+          } catch (err) {
+            logger.error({ err }, 'Oration error');
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    // ── AI Email platforms ────────────────────────────────────────────────────
+
+    if (method === 'GET' && pathname === '/api/integrations/aiemail/status') {
+      (async () => {
+        try {
+          const instantlyActive = isInstantlyConfigured();
+          const salesforgeActive = isSalesforgeConfigured();
+          const [instantlyCampaigns, salesforgeSequences] = await Promise.all([
+            instantlyActive ? getInstantlyCampaigns() : Promise.resolve([]),
+            salesforgeActive ? getSalesforgeSequences() : Promise.resolve([]),
+          ]);
+          json(res, {
+            instantly: { active: instantlyActive, campaigns: instantlyCampaigns },
+            salesforge: { active: salesforgeActive, sequences: salesforgeSequences },
+          });
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      })();
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/integrations/instantly/sync') {
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { prospects, campaignId } = JSON.parse(body);
+            if (!Array.isArray(prospects)) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'prospects array required' }));
+              return;
+            }
+            const result = await syncInstantly(prospects, campaignId);
+            json(res, result);
+          } catch (err) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/integrations/salesforge/sync') {
+      readBody(req, (body) => {
+        (async () => {
+          try {
+            const { contacts, sequenceId } = JSON.parse(body);
+            if (!Array.isArray(contacts)) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'contacts array required' }));
+              return;
+            }
+            const result = await syncSalesforge(contacts, sequenceId);
+            json(res, result);
+          } catch (err) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        })();
+      });
+      return;
+    }
+
+    // ── Zoom webhook ──────────────────────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/zoom/webhook') {
+      readBody(req, (body) => {
+        try {
+          const timestamp = (req.headers['x-zm-request-timestamp'] as string) ?? '';
+          const signature = (req.headers['x-zm-signature'] as string) ?? '';
+          if (!verifyZoomWebhook(body, timestamp, signature)) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Invalid signature' }));
+            return;
+          }
+          const payload = JSON.parse(body);
+          // Handle URL validation challenge
+          if (payload.event === 'endpoint.url_validation') {
+            const secret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? '';
+            const hashForValidate = crypto.createHmac('sha256', secret)
+              .update(payload.payload.plainToken)
+              .digest('hex');
+            json(res, { plainToken: payload.payload.plainToken, encryptedToken: hashForValidate });
+            return;
+          }
+          const result = handleZoomWebhookEvent(payload);
+          json(res, { ok: true, result });
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // ── Otter transcripts ─────────────────────────────────────────────────────
+
+    if (method === 'GET' && pathname === '/api/otter/transcripts') {
+      (async () => {
+        try {
+          if (!isOtterConfigured()) {
+            json(res, { configured: false, transcripts: [] });
+            return;
+          }
+          const transcripts = await getOtterTranscripts(20);
+          json(res, { configured: true, transcripts });
         } catch (err) {
           res.writeHead(500);
           res.end(JSON.stringify({ error: String(err) }));
