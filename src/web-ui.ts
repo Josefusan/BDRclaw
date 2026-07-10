@@ -41,6 +41,7 @@ import {
   upsertCampaign,
 } from './bdr-db.js';
 import { verifyUnsubscribeToken } from './email-compliance.js';
+import { renderPrivacyContent, renderTermsContent } from './legal-pages.js';
 import {
   builderChat,
   editCampaign,
@@ -101,6 +102,25 @@ export function route(
   // /unsubscribe is a real endpoint, not a 404 or SPA fallback.
   if (pathname === '/unsubscribe') {
     handleUnsubscribe(method, url, req, res);
+    return;
+  }
+
+  // Legal pages (required for the Twilio 10DLC campaign filing). Handled before
+  // the SPA fallback so /privacy and /terms serve real content, not index.html.
+  if (method === 'GET' && pathname === '/privacy') {
+    sendHtml(
+      res,
+      200,
+      legalPageShell('Privacy Policy', renderPrivacyContent()),
+    );
+    return;
+  }
+  if (method === 'GET' && pathname === '/terms') {
+    sendHtml(
+      res,
+      200,
+      legalPageShell('Terms of Service', renderTermsContent()),
+    );
     return;
   }
 
@@ -829,6 +849,13 @@ function handleUnsubscribe(
   if (method === 'GET') {
     const p = url.searchParams.get('p') ?? '';
     const t = url.searchParams.get('t') ?? '';
+    // A bare visit (e.g. a footer "Unsubscribe" link with no prospect context)
+    // shows how to opt out rather than an error — the per-recipient link in each
+    // email carries the token that removes that specific contact.
+    if (!p && !t) {
+      sendHtml(res, 200, unsubscribeInfoPage());
+      return;
+    }
     if (!verifyUnsubscribeToken(p, t)) {
       sendHtml(res, 400, unsubscribePage('This unsubscribe link is invalid.'));
       return;
@@ -906,6 +933,23 @@ function unsubscribePage(message: string): string {
   return legalPageShell(
     'Unsubscribe',
     `<h1>Unsubscribe</h1><p>${escapeHtml(message)}</p>`,
+  );
+}
+
+function unsubscribeInfoPage(): string {
+  return legalPageShell(
+    'Unsubscribe',
+    `
+    <h1>Unsubscribe</h1>
+    <p>To stop receiving messages from us:</p>
+    <ul>
+      <li><strong>Email:</strong> use the unsubscribe link at the bottom of any
+          email you received from us — it removes your specific address
+          immediately.</li>
+      <li><strong>SMS:</strong> reply <strong>STOP</strong> to any text message.</li>
+    </ul>
+    <p>See our <a href="/privacy">Privacy Policy</a> for how we handle opt-outs.</p>
+  `,
   );
 }
 

@@ -135,4 +135,44 @@ describe('POST /unsubscribe', () => {
     expect(res.status).toBe(400);
     expect(isProspectSuppressed(getProspectById(PROSPECT_ID)!)).toBe(false);
   });
+
+  it('shows an informational opt-out page for a bare visit (no token)', async () => {
+    const res = await fetch(`${base}/unsubscribe`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('STOP');
+    expect(body.toLowerCase()).toContain('unsubscribe');
+  });
+});
+
+describe('legal pages (Feature 3 — required for 10DLC filing)', () => {
+  it('GET /privacy returns 200 with the required SMS compliance clauses', async () => {
+    const res = await fetch(`${base}/privacy`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const body = await res.text();
+    expect(body).toContain('Privacy Policy');
+    // 10DLC-required clauses (docs/TWILIO-10DLC-SETUP.md).
+    expect(body.toLowerCase()).toContain('opt-in');
+    expect(body).toContain('STOP');
+    expect(body).toContain('HELP');
+    expect(body.toLowerCase()).toContain('message frequency');
+    expect(body.toLowerCase()).toContain('message and data rates may apply');
+    expect(body.toLowerCase()).toContain(
+      'not shared with third parties for marketing',
+    );
+    // Env-substituted legal details.
+    expect(body).toContain('Acme Sales LLC');
+    expect(body).toContain('500 Market St, San Francisco, CA 94105');
+  });
+
+  it('GET /terms returns 200 with terms content', async () => {
+    const res = await fetch(`${base}/terms`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const body = await res.text();
+    expect(body).toContain('Terms of Service');
+    expect(body.toLowerCase()).toContain('acceptable use');
+    expect(body).toContain('Acme Sales LLC');
+  });
 });
