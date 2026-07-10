@@ -1,6 +1,6 @@
 # BDRclaw — Session Hand-off
 
-> **Last updated:** 2026-07-09 · **Branch:** `main` · **Head:** `d870ae2`
+> **Last updated:** 2026-07-10 · **Branch:** `main` · **Head:** `514cfd6`
 > Read this first when you come back. It's the "where did I leave off" file.
 > Full detail: `ISA.md` (build system-of-record), `docs/MVP-PLAN.md` (the plan), `docs/TWILIO-10DLC-SETUP.md` (SMS paperwork).
 
@@ -8,57 +8,47 @@
 
 ## TL;DR — where things stand
 
-**The MVP's core loop is now alive and tested.** BDRclaw compiled cleanly before, but the agentic loop was dead at both ends: inbound replies never reached the reply handler, and the AI-composed/quality-gated message was thrown away before sending. **Both are now fixed, tested (233/233), committed, and pushed.**
+**BDRclaw sent its first live email today.** Full chain verified end-to-end on real infrastructure: prospect imported via CSV → BDR Brain reviewed the pipeline and queued a `send_email` action → Gmail channel connected via OAuth → sequence step 1 delivered to a real inbox (Gmail messageId `19f4daebfeaba24f`). Claude API key live-verified. Gmail OAuth working (the flow itself needed a fix — see Done).
 
-What's left to make it a *demoable* MVP is mostly **deployment + external paperwork**, not code:
-1. Deploy to Railway (kills the `bdrclaw.dev/api/health` 404).
-2. Twilio 10DLC registration (1–4 week lead time — start ASAP).
-3. Then channel-specific build-out (LinkedIn Patchright, SMS compliance engine).
+That send used the sequence **template** path (`composed: false`). The AI-composed + quality-gated path (campaign loop) is the next demo tier.
 
 ---
 
-## ✅ Done (committed + pushed to GitHub)
+## ✅ Done this session (2026-07-10)
 
-| Commit | What |
-|--------|------|
-| `68e64df` | Agent-swarm layer (bdr-manager, cold-outreach, crm-agent, meeting-intelligence, oration, second-brain) + deals-db + integrations + `MVP-PLAN.md` |
-| `7d184bc` | Decision lock (LinkedIn=Patchright, channel scope) + `TWILIO-10DLC-SETUP.md` |
-| `d870ae2` | **Phase 1 — closed both wiring breaks** (the real MVP fix) |
+| Item | Detail |
+|------|--------|
+| Gmail OAuth fixed + shipped | `514cfd6` — Google killed the OOB flow (Jan 2023); replaced with loopback redirect on `localhost:8976` + auto-catch server in the setup CLI |
+| Claude API | Key installed in `.env`, live-verified with a real Messages call |
+| Gmail account authorized | Sending account 1 authorized; refresh token in `store/gmail-tokens/account-1.json` |
+| First live email | Test prospect (Jordan Testwell / Acme Widgets) received sequence step 1; thread tracking active |
+| Railway CLI installed | v5.26.0 — `railway login` still pending (interactive) |
+| Compliance build (agent branch, **unmerged**) | CAN-SPAM footer + List-Unsubscribe/RFC 8058 headers, `/unsubscribe` endpoint → `bdr_suppression`, Twilio webhook signature validation, `/privacy` + `/terms` pages with 10DLC-required clauses. On local worktree branch `worktree-agent-afa8559908df401d8` — review, merge, test, push |
 
-**Phase 1 in detail (commit `d870ae2`):**
-- **Break B fixed** — composed + quality-gated message now reaches the channel handler as a typed `ComposedOutbound` arg via `resolveOutboundBody()`. The old `enrichment.__campaign_message` smuggling is gone.
-- **Break A fixed** — inbound routes `src/index.ts` onMessage → `getProspectByContact()` → `processReply()`, with exactly-once idempotency (`bdr_processed_inbound` table).
-- **Compliance** — deterministic STOP/UNSUBSCRIBE pre-gate (before any Claude call) + global `bdr_suppression` list enforced at both outbound entry points.
-- **Cleanup** — blocked-touch status `'bounced'`→`'blocked'` (ISC-13); CRM double-push deduped; orphaned `campaign-runner.ts` deleted.
-- **Test** — `src/agents/loop.e2e.test.ts` guards both breaks. Full suite **233/233 pass**, typecheck 0 errors, lint clean on touched files.
+---
+
+## 🐛 Bugs found by the live test (fixes scoped, not yet written)
+
+1. **`npm run brain` crashes standalone** — the script never calls `initBDRDatabase()` (only `src/index.ts` does). Fix: give the script a proper runner that inits DB (+ loads channels so action handlers register).
+2. **Hard Docker dependency kills production** — `ensureContainerSystemRunning()` FATALs when Docker is absent. The Railway container has no Docker daemon, so **the current code cannot boot on Railway** (blocks ISC-38..40). Fix: containerless mode — probe runtime availability, degrade gracefully (agent containers are only needed for conversational group-chat sessions; the BDR loop, webhooks, and reply handler don't use them).
+3. **Agents need `ANTHROPIC_API_KEY` in process env** — nothing hydrates `.env` into `process.env` for the `new Anthropic()` call sites; works only if the launcher exports it (launchd plist, Railway env vars, or `set -a; source .env`). Decide: keep as deployment contract (document it) or hydrate at startup.
 
 ---
 
 ## 👉 Next actions (in priority order)
 
-### 1. Twilio 10DLC registration — DO THIS FIRST (longest lead time: 1–4 weeks)
-External paperwork, not code. Follow `docs/TWILIO-10DLC-SETUP.md` step by step.
-- **Blocker to confirm:** which entity's EIN to use — it must be **≥30 days old**, and you need a **paid** Twilio account (trial can't register).
-- Submit brand + campaign registration (campaign copy is pre-written in the guide).
-- Optionally submit toll-free verification in parallel (free, ~3–5 days) as a pilot bridge.
+### Code (next session)
+1. **Merge the compliance branch** — review `worktree-agent-afa8559908df401d8`, run full suite, merge to main, push.
+2. **Containerless mode** (bug 2) — required before Railway deploy can work at all.
+3. **Fix `npm run brain`** (bug 1).
+4. **AI-composed campaign demo** — run the campaign loop (`processEnrollment`) so Claude composes a personalized message and the quality gate judges it; this is the real product demo vs. the template send.
 
-### 2. Phase 2 — Deploy to Railway (~0.5 day, unblocks webhooks)
-- `Dockerfile` + `railway.json` already exist. Deploy, set env vars, volume-mount the SQLite DB.
-- Point `bdrclaw.dev` DNS at the service (landing page moves to `/` or a subdomain).
-- Add Twilio webhook signature validation (`twilio.validateRequest`) on `/webhooks/sms` + `/webhooks/whatsapp`.
-- **Verify:** `curl https://bdrclaw.dev/api/health` → `{"status":"ok"}` (currently 404).
-- This also flips the two `[DEFERRED-VERIFY]` ISCs (ISC-31/32) to live-verified once a real SMS/Telegram round-trip works.
+### External / operator paperwork (parallel track)
+5. **Railway**: `railway login`, then deploy (volume-mount SQLite, env vars, DNS) → kills the `bdrclaw.dev/api/health` 404 → flips ISC-31/32 from DEFERRED-VERIFY once webhooks round-trip.
+6. **Twilio 10DLC**: confirm EIN is ≥30 days old (also gates the toll-free bridge since Feb 2026), upgrade to paid account, get legal entity name + mailing address (also needed for the CAN-SPAM footer), and file **only after** the privacy/opt-in pages are live — filing against a bare site risks rejection + clock restart. Treat "campaign denied" as a live branch.
+7. **Email deliverability** (before real campaigns): SPF/DKIM/DMARC + domain warmup (2–4 weeks); demo on seeded inboxes until then. Ship List-Unsubscribe/CAN-SPAM (item 1) before any real email campaign activates.
 
-### 3. Phase 3 — SMS compliance engine (before any SMS campaign goes active)
-Consent fields + attestation at import, quiet-hours engine (wire the existing `src/timezone.ts`), TCPA 2-touch cap counted from `bdr_touches` (not regex over memory), consent/opt-out event log. Details in `MVP-PLAN.md` §Phase 3.
-
-### 4. Phase 4 — LinkedIn via Patchright (DECIDED: self-hosted)
-Swap `playwright` → `patchright` (drop-in fork), add human-pacing engine, keep 20 conn/50 DM daily caps, wire LinkedIn inbound poll → `processReply`. `MVP-PLAN.md` §Phase 4.
-
-### 5. Phases 5–7
-X→OAuth2 PKCE + DM-on-reply only; WhatsApp `whatsapp_dm` handler (international + inbound only); Instagram warm-only enforcement; landing-page copy honesty pass. Plus BDR-layer test coverage.
-
-**Estimate:** ~9–12 engineering days total; **~3–4 days to a demoable MVP on email alone** while Twilio registration clears in the background.
+**Honest effort accounting:** ~9–12 engineering days remain for the full MVP (SMS compliance engine, LinkedIn Patchright swap, phases 5–7). "Mostly paperwork" is true only of the email-demo milestone.
 
 ---
 
@@ -66,44 +56,43 @@ X→OAuth2 PKCE + DM-on-reply only; WhatsApp `whatsapp_dm` handler (internationa
 
 | Decision | Choice | Why |
 |----------|--------|-----|
-| LinkedIn integration | **Patchright self-hosted** | Lowest ban surface (user's own browser/IP), no per-account SaaS fee, evolves existing Playwright code. Unipile kept as documented later-swap. |
-| Channel scope | **Cold: Email+SMS+LinkedIn; Warm-only: X+WhatsApp** | X cold DMs are policy-banned + mostly undeliverable; Meta paused US WhatsApp marketing templates (Apr 2025, still active). |
+| LinkedIn integration | **Patchright self-hosted** | Lowest ban surface, no per-account SaaS fee. Unipile kept as documented later-swap. |
+| Channel scope | **Cold: Email+SMS+LinkedIn; Warm-only: X+WhatsApp** | X cold DMs policy-banned; Meta paused US WhatsApp marketing templates. |
 | SMS provider | **Twilio** (already integrated) | Alternatives save ~$18/mo at MVP scale — not worth switching. |
-| CRM double-push | Keep `updateProspectStage`'s `stage_change` as the single authoritative push | It's the ISC-25 invariant firing in every path. |
+| CRM push | `updateProspectStage`'s `stage_change` is the single authoritative push | ISC-25 invariant. |
 
 ---
 
 ## ⚠️ Gotchas / environment notes
 
-- **Forge (GPT-5.4) is currently unreachable.** codex routes to a self-hosted Ollama on your tailnet (`100.119.10.74:11434`) and **Tailscale is logged out**. To restore Forge: `tailscale up` (re-auth), confirm with `nc -z 100.119.10.74 11434`. Phase 1 was implemented directly (Claude) from Forge's saved spec at `<scratchpad>/forge-prompt.md`.
-- **Pre-commit hook runs `prettier --write`** (`.husky/pre-commit` → `npm run format:fix`) but does NOT re-stage. Run `npm run format:fix` yourself before committing so the committed version is already formatted, or you'll see formatting-only diffs reappear.
-- **`prospects/` is now gitignored** — it holds runtime per-prospect memory; the e2e test writes there.
-- **Two outbound send entry points** exist (agentic loop `processEnrollment`, brain `dispatchAction`) — both now enforce suppression. If you add a third, guard it too.
-
----
+- **Google OAuth client is "Web application" type** — the loopback URI `http://localhost:8976/oauth2callback` must stay listed under Authorized redirect URIs, and any Gmail account you authorize must be on the consent screen's Test users list (403 `access_denied` otherwise).
+- **`.env` values with spaces must be double-quoted** — some local test flows `source .env` in zsh, which breaks on unquoted spaces (dotenv-style parsers don't care; the shell does).
+- **Brain schedules first touch for next-day 10:00** — new prospects won't send immediately; for testing, update `bdr_prospects.next_action_at` to the past and re-run a cycle.
+- **Pre-commit hook runs `prettier --write` but does NOT re-stage.** Run `npm run format:fix` before committing.
+- **Two outbound send entry points** (`processEnrollment`, `dispatchAction`) — both enforce suppression; any new send path must too.
+- **Forge (GPT-5.4) unreachable** — codex routes to a tailnet Ollama host and Tailscale is logged out. `tailscale up` to restore.
+- **`prospects/` and `store/` are gitignored** runtime state; never commit.
 
 ## 🔁 Resume commands
 
 ```bash
 cd ~/Documents/Coding/BDRclaw
-git log --oneline -4          # confirm you're at d870ae2 or later
+git log --oneline -4          # expect 514cfd6 or later
 npm run typecheck             # expect 0 errors
-npm test                      # expect 233 passing
+npm test                      # expect 233 passing (pre-merge baseline)
 git status                    # expect clean
-
-# When ready to restore Forge for AI-assisted coding:
-tailscale up && nc -z 100.119.10.74 11434
+git branch -a | grep worktree # compliance branch awaiting merge
 ```
 
 ## 📍 Key files
 
 | File | What |
 |------|------|
-| `ISA.md` | Build system-of-record — 41 ISCs, which pass, Changelog, Verification |
+| `ISA.md` | Build system-of-record — ISCs, Changelog, Verification |
 | `docs/MVP-PLAN.md` | The full ordered build plan (Phases 0–7) with effort estimates |
 | `docs/TWILIO-10DLC-SETUP.md` | SMS registration checklist + pre-written campaign copy |
 | `src/agents/loop.ts` | Agentic loop — the live send path (`runTickOnce`) |
 | `src/agents/reply-handler.ts` | Inbound classification + STOP pre-gate |
-| `src/index.ts` | `parseProspectJid` + onMessage→processReply routing |
+| `src/gmail-auth.ts` / `setup/gmail-auth.ts` | OAuth loopback flow (fixed this session) |
 | `src/bdr-db.ts` | `getProspectByContact`, suppression, idempotency |
-| `src/agents/loop.e2e.test.ts` | End-to-end test guarding both wiring breaks |
+| `src/agents/loop.e2e.test.ts` | End-to-end test guarding the loop wiring |
