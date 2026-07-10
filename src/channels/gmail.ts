@@ -11,6 +11,10 @@ import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 
 import {
+  appendCanSpamFooter,
+  listUnsubscribeHeaders,
+} from '../email-compliance.js';
+import {
   credentialsKeyToIndex,
   getActiveAccountIndices,
   getAuthenticatedClient,
@@ -37,6 +41,14 @@ export interface GmailSendOptions {
   threadId?: string;
   /** Message-ID header of the email to reply to */
   inReplyTo?: string;
+  /**
+   * Prospect id this email is going to. When set, the send is treated as a
+   * commercial email: a CAN-SPAM footer (legal name + mailing address +
+   * unsubscribe link) is appended to the body and List-Unsubscribe /
+   * List-Unsubscribe-Post headers are added. Applied here — at the channel
+   * layer, after the quality gate — so the gate reviews the real message body.
+   */
+  unsubscribeProspectId?: string;
 }
 
 export interface GmailSendResult {
@@ -117,12 +129,23 @@ export class GmailChannel implements Channel {
     const auth = getAuthenticatedClient(idx);
     const gmail = google.gmail({ version: 'v1', auth });
 
+    // CAN-SPAM: commercial sends (those bound to a prospect) get a legal-name +
+    // physical-address footer with an unsubscribe link, plus List-Unsubscribe
+    // headers (RFC 8058 one-click). Applied after the quality gate by design.
+    const body = opts.unsubscribeProspectId
+      ? appendCanSpamFooter(opts.body, opts.unsubscribeProspectId)
+      : opts.body;
+    const extraHeaders = opts.unsubscribeProspectId
+      ? listUnsubscribeHeaders(opts.unsubscribeProspectId)
+      : undefined;
+
     const mime = buildMime({
       from: fromEmail,
       to: opts.to,
       subject: opts.subject,
-      body: opts.body,
+      body,
       inReplyTo: opts.inReplyTo,
+      headers: extraHeaders,
     });
 
     const params: gmail_v1.Params$Resource$Users$Messages$Send = {
@@ -229,6 +252,7 @@ function buildMime(opts: {
   subject: string;
   body: string;
   inReplyTo?: string;
+  headers?: Record<string, string>;
 }): string {
   const boundary = `bdrclaw_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const lines: string[] = [
@@ -236,8 +260,12 @@ function buildMime(opts: {
     `To: ${opts.to}`,
     `Subject: ${opts.subject}`,
     `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ];
+  // Extra top-level headers (e.g. List-Unsubscribe, List-Unsubscribe-Post).
+  for (const [name, value] of Object.entries(opts.headers ?? {})) {
+    lines.push(`${name}: ${value}`);
+  }
+  lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
   if (opts.inReplyTo) {
     lines.push(`In-Reply-To: ${opts.inReplyTo}`);
     lines.push(`References: ${opts.inReplyTo}`);

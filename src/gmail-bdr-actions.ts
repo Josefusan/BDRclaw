@@ -138,6 +138,7 @@ registerActionHandler(
         accountIndex,
         threadId: existingThread?.threadId,
         inReplyTo: existingThread?.messageId,
+        unsubscribeProspectId: prospect.id, // CAN-SPAM footer + List-Unsubscribe
       });
 
       // Save thread for future follow-ups
@@ -266,6 +267,7 @@ registerActionHandler('send_meeting_link', async (prospect: BDRProspect) => {
       accountIndex,
       threadId: existingThread?.threadId,
       inReplyTo: existingThread?.messageId,
+      unsubscribeProspectId: prospect.id, // CAN-SPAM footer + List-Unsubscribe
     });
 
     saveThread(prospect.id, result.threadId, result.messageId);
