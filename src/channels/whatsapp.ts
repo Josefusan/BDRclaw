@@ -21,6 +21,7 @@
 import twilio from 'twilio';
 
 import { logger } from '../logger.js';
+import { validateTwilioRequest } from '../twilio-signature.js';
 import { registerWebhook } from '../webhook-registry.js';
 import type {
   Channel,
@@ -114,15 +115,16 @@ export class WhatsAppChannel implements Channel {
 
   private registerInboundWebhook(): void {
     registerWebhook('/webhooks/whatsapp', (req, res, body) => {
-      // Parse Twilio's URL-encoded form body
-      const params = Object.fromEntries(
-        body.split('&').map((pair) => {
-          const [k, v] = pair
-            .split('=')
-            .map((s) => decodeURIComponent(s.replace(/\+/g, ' ')));
-          return [k, v];
-        }),
-      );
+      // URLSearchParams decodes '+'→space and handles '=' inside values, so the
+      // params match exactly what Twilio signed (correct signature validation).
+      const params = Object.fromEntries(new URLSearchParams(body));
+
+      // Reject forged/replayed requests before doing any work (403).
+      if (!validateTwilioRequest(req, '/webhooks/whatsapp', params)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
 
       const from = params['From'] ?? ''; // "whatsapp:+15551234567"
       const msgBody = params['Body'] ?? '';
