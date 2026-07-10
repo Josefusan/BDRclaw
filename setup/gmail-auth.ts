@@ -7,6 +7,7 @@
  * Stores refresh tokens in store/gmail-tokens/account-{n}.json.
  */
 
+import http from 'http';
 import readline from 'readline';
 
 import {
@@ -14,6 +15,7 @@ import {
   getAuthUrl,
   getConfiguredAccountIndices,
   loadTokens,
+  OAUTH_CALLBACK_PORT,
 } from '../src/gmail-auth.js';
 import { readEnvFile } from '../src/env.js';
 
@@ -50,6 +52,48 @@ function warn(text: string) {
 
 function err(text: string) {
   console.log(`${C.red}✗${C.reset} ${text}`);
+}
+
+/**
+ * Catch the OAuth authorization code on the loopback redirect.
+ * Falls back to manual paste if the port is taken (the code is visible
+ * in the browser's address bar as the `code` query param).
+ */
+function waitForAuthCode(): Promise<string> {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? '/', `http://localhost:${OAUTH_CALLBACK_PORT}`);
+      const code = url.searchParams.get('code');
+      if (url.pathname !== '/oauth2callback' || !code) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(
+        '<html><body style="font-family:sans-serif;text-align:center;padding-top:80px">' +
+          '<h2>✓ Gmail authorized</h2><p>You can close this tab and return to the terminal.</p>' +
+          '</body></html>',
+      );
+      server.close();
+      resolve(code);
+    });
+
+    server.once('error', () => {
+      // Port unavailable — the redirect will fail to load in the browser,
+      // but the code is still in the address bar. Let the user paste it.
+      warn(
+        `Could not listen on localhost:${OAUTH_CALLBACK_PORT} — after approving, ` +
+          `copy the "code" parameter from the browser address bar.`,
+      );
+      ask('Paste the authorization code here: ').then(resolve);
+    });
+
+    server.listen(OAUTH_CALLBACK_PORT, () => {
+      console.log(
+        `${C.dim}Waiting for browser authorization on localhost:${OAUTH_CALLBACK_PORT}…${C.reset}\n`,
+      );
+    });
+  });
 }
 
 async function main() {
@@ -193,9 +237,9 @@ async function main() {
       `This is normal for personal OAuth apps.${C.reset}\n`,
   );
 
-  const code = await ask('Paste the authorization code here: ');
+  const code = await waitForAuthCode();
   if (!code.trim()) {
-    err('No code entered. Exiting.');
+    err('No code received. Exiting.');
     process.exit(1);
   }
 

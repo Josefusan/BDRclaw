@@ -21,8 +21,12 @@ const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
 ];
 
-// Desktop app redirect URI (no HTTP server required)
-const REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
+// Loopback redirect — Google removed the OOB flow (urn:ietf:wg:oauth:2.0:oob)
+// in January 2023; auth now requires a redirect the setup CLI can catch.
+// For "Web application" OAuth clients this exact URI must be listed under
+// Authorized redirect URIs in the Google Cloud console.
+export const OAUTH_CALLBACK_PORT = 8976;
+const REDIRECT_URI = `http://localhost:${OAUTH_CALLBACK_PORT}/oauth2callback`;
 
 // ── OAuth2 Client ─────────────────────────────────────────────────────────────
 
