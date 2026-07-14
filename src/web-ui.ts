@@ -20,6 +20,7 @@ const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
 import {
   addProspect,
+  addProspectToSuppression,
   enrollProspect,
   getActiveEnrollments,
   getAllAccounts,
@@ -33,11 +34,14 @@ import {
   getRecentActivity,
   getRecentBrainRuns,
   getRecentImportJobs,
+  isProspectSuppressed,
   listCampaigns,
   searchProspects,
   updateProspectStage,
   upsertCampaign,
 } from './bdr-db.js';
+import { verifyUnsubscribeToken } from './email-compliance.js';
+import { renderPrivacyContent, renderTermsContent } from './legal-pages.js';
 import {
   builderChat,
   editCampaign,
@@ -75,7 +79,10 @@ const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
-function route(req: http.IncomingMessage, res: http.ServerResponse): void {
+export function route(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
   const method = req.method ?? 'GET';
   const pathname = url.pathname;
@@ -88,6 +95,32 @@ function route(req: http.IncomingMessage, res: http.ServerResponse): void {
   if (method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // Public compliance pages (CAN-SPAM opt-out). Handled before static files so
+  // /unsubscribe is a real endpoint, not a 404 or SPA fallback.
+  if (pathname === '/unsubscribe') {
+    handleUnsubscribe(method, url, req, res);
+    return;
+  }
+
+  // Legal pages (required for the Twilio 10DLC campaign filing). Handled before
+  // the SPA fallback so /privacy and /terms serve real content, not index.html.
+  if (method === 'GET' && pathname === '/privacy') {
+    sendHtml(
+      res,
+      200,
+      legalPageShell('Privacy Policy', renderPrivacyContent()),
+    );
+    return;
+  }
+  if (method === 'GET' && pathname === '/terms') {
+    sendHtml(
+      res,
+      200,
+      legalPageShell('Terms of Service', renderTermsContent()),
+    );
     return;
   }
 
@@ -799,9 +832,185 @@ function handleApi(
   }
 }
 
+// ── Unsubscribe (CAN-SPAM opt-out) ──────────────────────────────────────────────
+//
+// GET  /unsubscribe?p=<id>&t=<token>  → minimal confirm page (browser click).
+// POST /unsubscribe                   → adds the prospect to bdr_suppression via
+//   the single authoritative path (addProspectToSuppression). Params may arrive
+//   in the query string (RFC 8058 one-click POST from a mail client) or in the
+//   form body (the confirm page's button). Fully deterministic — no Claude call.
+
+function handleUnsubscribe(
+  method: string,
+  url: URL,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  if (method === 'GET') {
+    const p = url.searchParams.get('p') ?? '';
+    const t = url.searchParams.get('t') ?? '';
+    // A bare visit (e.g. a footer "Unsubscribe" link with no prospect context)
+    // shows how to opt out rather than an error — the per-recipient link in each
+    // email carries the token that removes that specific contact.
+    if (!p && !t) {
+      sendHtml(res, 200, unsubscribeInfoPage());
+      return;
+    }
+    if (!verifyUnsubscribeToken(p, t)) {
+      sendHtml(res, 400, unsubscribePage('This unsubscribe link is invalid.'));
+      return;
+    }
+    const prospect = getProspectById(p);
+    if (prospect && isProspectSuppressed(prospect)) {
+      sendHtml(
+        res,
+        200,
+        unsubscribePage('You are already unsubscribed. No further emails.'),
+      );
+      return;
+    }
+    sendHtml(res, 200, unsubscribeConfirmPage(p, t));
+    return;
+  }
+
+  if (method === 'POST') {
+    readBody(req, (body) => {
+      const form = new URLSearchParams(body);
+      // One-click (RFC 8058) keeps p/t in the query; the confirm form posts them
+      // in the body. Accept either.
+      const p = url.searchParams.get('p') ?? form.get('p') ?? '';
+      const t = url.searchParams.get('t') ?? form.get('t') ?? '';
+
+      if (!verifyUnsubscribeToken(p, t)) {
+        sendHtml(
+          res,
+          400,
+          unsubscribePage('This unsubscribe link is invalid.'),
+        );
+        return;
+      }
+
+      const prospect = getProspectById(p);
+      if (prospect) {
+        // Single authoritative suppression path — same one STOP/opt-out uses.
+        addProspectToSuppression(prospect, 'unsubscribe:email-link');
+        updateProspectStage(prospect.id, 'unsubscribed');
+      }
+      logger.info({ prospectId: p }, 'Prospect unsubscribed via email link');
+      sendHtml(
+        res,
+        200,
+        unsubscribePage(
+          'You have been unsubscribed. You will not be emailed again.',
+        ),
+      );
+    });
+    return;
+  }
+
+  res.writeHead(405, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Method not allowed' }));
+}
+
+function unsubscribeConfirmPage(p: string, t: string): string {
+  const params = new URLSearchParams({ p, t }).toString();
+  return legalPageShell(
+    'Unsubscribe',
+    `
+    <h1>Unsubscribe</h1>
+    <p>Click the button below to stop receiving outreach emails from us.
+       This takes effect immediately.</p>
+    <form method="POST" action="/unsubscribe?${escapeHtml(params)}">
+      <input type="hidden" name="p" value="${escapeHtml(p)}">
+      <input type="hidden" name="t" value="${escapeHtml(t)}">
+      <button type="submit">Unsubscribe me</button>
+    </form>
+  `,
+  );
+}
+
+function unsubscribePage(message: string): string {
+  return legalPageShell(
+    'Unsubscribe',
+    `<h1>Unsubscribe</h1><p>${escapeHtml(message)}</p>`,
+  );
+}
+
+function unsubscribeInfoPage(): string {
+  return legalPageShell(
+    'Unsubscribe',
+    `
+    <h1>Unsubscribe</h1>
+    <p>To stop receiving messages from us:</p>
+    <ul>
+      <li><strong>Email:</strong> use the unsubscribe link at the bottom of any
+          email you received from us — it removes your specific address
+          immediately.</li>
+      <li><strong>SMS:</strong> reply <strong>STOP</strong> to any text message.</li>
+    </ul>
+    <p>See our <a href="/privacy">Privacy Policy</a> for how we handle opt-outs.</p>
+  `,
+  );
+}
+
 function json(res: http.ServerResponse, data: unknown): void {
   res.writeHead(200);
   res.end(JSON.stringify(data));
+}
+
+function sendHtml(
+  res: http.ServerResponse,
+  status: number,
+  html: string,
+): void {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
+}
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Minimal, dependency-free HTML shell for the public compliance pages
+ * (unsubscribe, privacy, terms). `inner` is trusted HTML — callers escape any
+ * user/env-derived values before passing them in.
+ */
+function legalPageShell(title: string, inner: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)} — BDRclaw</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 40px 24px; line-height: 1.6;
+    color: #1a1a2e; background: #f7f8fb; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  h2 { font-size: 18px; margin-top: 28px; }
+  a { color: #2563eb; }
+  button { background: #2563eb; color: #fff; border: 0; border-radius: 6px;
+    padding: 10px 18px; font-size: 15px; cursor: pointer; margin-top: 12px; }
+  button:hover { background: #1d4ed8; }
+  .muted { color: #6b7280; font-size: 13px; }
+  footer { margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 16px;
+    font-size: 13px; }
+</style>
+</head>
+<body>
+${inner}
+<footer class="muted">
+  <a href="/privacy">Privacy Policy</a> ·
+  <a href="/terms">Terms of Service</a> ·
+  <a href="/">Home</a>
+</footer>
+</body>
+</html>`;
 }
 
 function readBody(req: http.IncomingMessage, cb: (body: string) => void): void {
