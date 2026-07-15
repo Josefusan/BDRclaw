@@ -34,12 +34,15 @@ import {
   getRecentActivity,
   getRecentBrainRuns,
   getRecentImportJobs,
+  getSuppressionList,
+  getTodayOutboundByChannel,
   isProspectSuppressed,
   listCampaigns,
   searchProspects,
   updateProspectStage,
   upsertCampaign,
 } from './bdr-db.js';
+import { STORE_DIR } from './config.js';
 import { verifyUnsubscribeToken } from './email-compliance.js';
 import { renderPrivacyContent, renderTermsContent } from './legal-pages.js';
 import {
@@ -76,6 +79,145 @@ import {
 
 const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
+
+// ── Channel configuration status ──────────────────────────────────────────────
+// Required env vars per channel (NAMES only — values are never returned by any
+// endpoint). Mirrors what each src/channels/* factory reads at startup.
+
+const CHANNELS = [
+  'email',
+  'linkedin',
+  'twitter',
+  'instagram',
+  'telegram',
+  'whatsapp',
+  'sms',
+] as const;
+type ChannelName = (typeof CHANNELS)[number];
+
+const CHANNEL_ENV_REQUIREMENTS: Record<ChannelName, string[]> = {
+  email: ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_ACCOUNT_1'],
+  linkedin: [
+    'LINKEDIN_ENABLED',
+    'LINKEDIN_ACCOUNT_1_EMAIL',
+    'LINKEDIN_ACCOUNT_1_PASSWORD',
+  ],
+  twitter: [
+    'TWITTER_ENABLED',
+    'TWITTER_API_KEY',
+    'TWITTER_API_SECRET',
+    'TWITTER_ACCESS_TOKEN',
+    'TWITTER_ACCESS_TOKEN_SECRET',
+  ],
+  instagram: [
+    'INSTAGRAM_ENABLED',
+    'INSTAGRAM_ACCESS_TOKEN',
+    'INSTAGRAM_ACCOUNT_ID',
+  ],
+  telegram: ['TELEGRAM_BOT_TOKEN'],
+  whatsapp: [
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'TWILIO_WHATSAPP_NUMBER',
+  ],
+  sms: [
+    'SMS_ENABLED',
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'TWILIO_PHONE_NUMBER',
+  ],
+};
+
+/** Required env vars that are missing (or, for *_ENABLED flags, not 'true'). */
+function missingEnvVars(channel: ChannelName): string[] {
+  return CHANNEL_ENV_REQUIREMENTS[channel].filter((name) => {
+    const value = process.env[name];
+    if (name.endsWith('_ENABLED')) return value !== 'true';
+    return !value;
+  });
+}
+
+/**
+ * Documented daily send caps per channel. LinkedIn is 20 connection requests /
+ * 50 DMs — the DM cap is reported. SMS is TCPA-limited. Email defaults to the
+ * bdr_accounts config (sum of per-account daily_send_limit, default 50).
+ */
+function channelDailyLimit(channel: ChannelName): number {
+  switch (channel) {
+    case 'email': {
+      const emailAccounts = getAllAccounts().filter(
+        (a) => a.type === 'gmail' || a.type === 'outlook',
+      );
+      if (emailAccounts.length === 0) return 50;
+      return emailAccounts.reduce((sum, a) => sum + a.daily_send_limit, 0);
+    }
+    case 'linkedin':
+      return parseInt(process.env.LINKEDIN_DAILY_DM_LIMIT ?? '50', 10);
+    case 'twitter':
+      return parseInt(process.env.TWITTER_DAILY_DM_LIMIT ?? '100', 10);
+    case 'instagram':
+      return parseInt(process.env.INSTAGRAM_DAILY_DM_LIMIT ?? '50', 10);
+    case 'telegram':
+      return parseInt(process.env.TELEGRAM_DAILY_MSG_LIMIT ?? '200', 10);
+    case 'whatsapp':
+      return parseInt(process.env.WHATSAPP_DAILY_MSG_LIMIT ?? '100', 10);
+    case 'sms':
+      return parseInt(process.env.SMS_DAILY_MSG_LIMIT ?? '100', 10);
+  }
+}
+
+/**
+ * Cheap credential-artifact verification. Only claims `verified` where an
+ * artifact can actually be checked (token files parse, ID formats match);
+ * channels with no cheaply checkable artifact mirror `configured` — never
+ * faked beyond that.
+ */
+function isChannelVerified(channel: ChannelName, configured: boolean): boolean {
+  if (!configured) return false;
+  switch (channel) {
+    case 'email': {
+      // At least one configured Gmail account has a stored, parseable OAuth token.
+      const tokensDir = path.join(STORE_DIR, 'gmail-tokens');
+      for (let i = 1; i <= 3; i++) {
+        if (!process.env[`GMAIL_ACCOUNT_${i}`]) continue;
+        try {
+          JSON.parse(
+            fs.readFileSync(path.join(tokensDir, `account-${i}.json`), 'utf-8'),
+          );
+          return true;
+        } catch {
+          /* no token for this account — try the next */
+        }
+      }
+      return false;
+    }
+    case 'linkedin': {
+      // Saved Playwright session cookies from `npm run linkedin-auth`.
+      try {
+        JSON.parse(
+          fs.readFileSync(
+            path.join(STORE_DIR, 'linkedin-session.json'),
+            'utf-8',
+          ),
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    case 'sms':
+    case 'whatsapp':
+      // Twilio account SIDs are always "AC" + 32 hex chars.
+      return /^AC[0-9a-fA-F]{32}$/.test(process.env.TWILIO_ACCOUNT_SID ?? '');
+    case 'telegram':
+      // BotFather tokens are "<numeric bot id>:<35-char secret>".
+      return /^\d+:[\w-]{30,}$/.test(process.env.TELEGRAM_BOT_TOKEN ?? '');
+    case 'twitter':
+    case 'instagram':
+      // No cheaply checkable artifact — mirror configured.
+      return configured;
+  }
+}
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -260,97 +402,36 @@ function handleApi(
     }
 
     if (method === 'GET' && pathname === '/api/channels/status') {
+      const usedToday = getTodayOutboundByChannel();
       json(res, {
-        email: {
-          active: !!(
-            process.env.GMAIL_ACCOUNT_1 || process.env.GMAIL_ACCOUNT_2
-          ),
-          label: 'Gmail',
-          account:
-            process.env.GMAIL_ACCOUNT_1 ?? process.env.GMAIL_ACCOUNT_2 ?? null,
-          envKey: 'GMAIL_ACCOUNT_1',
-          setupSteps: [
-            'Go to your Google account → Security → App Passwords',
-            'Create an app password for "Mail"',
-            'Set GMAIL_ACCOUNT_1=your@gmail.com and GMAIL_APP_PASSWORD=<password> in .env',
-          ],
-        },
-        linkedin: {
-          active: process.env.LINKEDIN_ENABLED === 'true',
-          label: 'LinkedIn',
-          account: null,
-          envKey: 'LINKEDIN_ENABLED',
-          setupSteps: [
-            'Log in to linkedin.com in Chrome',
-            'Open DevTools → Application → Cookies',
-            'Copy the value of the "li_at" cookie',
-            'Set LINKEDIN_ENABLED=true and LI_AT=<cookie_value> in .env',
-          ],
-        },
-        sms: {
-          active:
-            process.env.SMS_ENABLED === 'true' &&
-            !!process.env.TWILIO_ACCOUNT_SID,
-          label: 'SMS',
-          account: process.env.TWILIO_PHONE_NUMBER ?? null,
-          envKey: 'SMS_ENABLED',
-          setupSteps: [
-            'Create a free Twilio account at twilio.com',
-            'Buy a phone number in the Twilio console',
-            'Copy your Account SID and Auth Token from the dashboard',
-            'Set SMS_ENABLED=true, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env',
-          ],
-        },
-        whatsapp: {
-          active: !!process.env.TWILIO_WHATSAPP_NUMBER,
-          label: 'WhatsApp',
-          account: process.env.TWILIO_WHATSAPP_NUMBER ?? null,
-          envKey: 'TWILIO_WHATSAPP_NUMBER',
-          setupSteps: [
-            'In Twilio console, enable WhatsApp Sandbox under Messaging',
-            'Follow the sandbox setup instructions from Twilio',
-            'Set TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886 in .env',
-          ],
-        },
-        telegram: {
-          active: !!process.env.TELEGRAM_BOT_TOKEN,
-          label: 'Telegram',
-          account: null,
-          envKey: 'TELEGRAM_BOT_TOKEN',
-          setupSteps: [
-            'Open Telegram and search for @BotFather',
-            'Send /newbot and follow the prompts to create your bot',
-            'Copy the API token that BotFather gives you',
-            'Set TELEGRAM_BOT_TOKEN=<your_token> in .env',
-          ],
-        },
-        twitter: {
-          active: !!process.env.TWITTER_API_KEY,
-          label: 'Twitter / X',
-          account: null,
-          envKey: 'TWITTER_API_KEY',
-          setupSteps: [
-            'Go to developer.twitter.com and create a project + app',
-            'Enable "Read and Write and Direct Messages" permissions',
-            'Create access tokens under "Keys and Tokens"',
-            'Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET in .env',
-          ],
-        },
-        instagram: {
-          active:
-            process.env.INSTAGRAM_ENABLED === 'true' &&
-            !!process.env.INSTAGRAM_ACCESS_TOKEN,
-          label: 'Instagram',
-          account: process.env.INSTAGRAM_ACCOUNT_ID ?? null,
-          envKey: 'INSTAGRAM_ENABLED',
-          setupSteps: [
-            'Create a Meta Developer account at developers.facebook.com',
-            'Create an app with Messenger/Instagram permissions',
-            'Generate a long-lived access token for your Instagram Business account',
-            'Set INSTAGRAM_ENABLED=true, INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID in .env',
-          ],
-        },
+        channels: CHANNELS.map((channel) => {
+          const configured = missingEnvVars(channel).length === 0;
+          return {
+            channel,
+            configured,
+            verified: isChannelVerified(channel, configured),
+            dailyLimit: channelDailyLimit(channel),
+            usedToday: usedToday[channel] ?? 0,
+          };
+        }),
       });
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/settings/env') {
+      // Missing env var NAMES per channel — never values (ISC-36).
+      json(res, {
+        channels: CHANNELS.map((channel) => ({
+          channel,
+          missing: missingEnvVars(channel),
+        })),
+      });
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/suppression') {
+      const entries = getSuppressionList();
+      json(res, { count: entries.length, entries });
       return;
     }
 
@@ -424,7 +505,8 @@ function handleApi(
               });
               imported.push(i);
             } catch (e) {
-              errors.push({ row: i, error: String(e) });
+              logger.warn({ err: e, row: i }, 'CSV import row failed');
+              errors.push({ row: i, error: 'row import failed' });
             }
           });
           json(res, { imported: imported.length, errors });
@@ -585,9 +667,7 @@ function handleApi(
             const result = await builderChat(sessionId, message);
             json(res, result);
           } catch (err) {
-            logger.error({ err }, 'Campaign builder chat error');
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Campaign builder chat error');
           }
         })();
       });
@@ -612,8 +692,7 @@ function handleApi(
             const result = await editCampaign(id, instruction);
             json(res, result);
           } catch (err) {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Web UI API error');
           }
         })();
       });
@@ -636,8 +715,7 @@ function handleApi(
           const contacts = await pullFromCRMs();
           json(res, { contacts, count: contacts.length });
         } catch (err) {
-          res.writeHead(500);
-          res.end(JSON.stringify({ error: String(err) }));
+          internalError(res, err, 'Web UI API error');
         }
       })();
       return;
@@ -663,9 +741,7 @@ function handleApi(
             );
             json(res, analysis);
           } catch (err) {
-            logger.error({ err }, 'Meeting analysis error');
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Meeting analysis error');
           }
         })();
       });
@@ -687,9 +763,7 @@ function handleApi(
             const result = await processOration(text);
             json(res, result);
           } catch (err) {
-            logger.error({ err }, 'Oration error');
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Oration error');
           }
         })();
       });
@@ -718,8 +792,7 @@ function handleApi(
             },
           });
         } catch (err) {
-          res.writeHead(500);
-          res.end(JSON.stringify({ error: String(err) }));
+          internalError(res, err, 'Web UI API error');
         }
       })();
       return;
@@ -738,8 +811,7 @@ function handleApi(
             const result = await syncInstantly(prospects, campaignId);
             json(res, result);
           } catch (err) {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Web UI API error');
           }
         })();
       });
@@ -759,8 +831,7 @@ function handleApi(
             const result = await syncSalesforge(contacts, sequenceId);
             json(res, result);
           } catch (err) {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: String(err) }));
+            internalError(res, err, 'Web UI API error');
           }
         })();
       });
@@ -797,8 +868,9 @@ function handleApi(
           const result = handleZoomWebhookEvent(payload);
           json(res, { ok: true, result });
         } catch (err) {
+          logger.warn({ err }, 'Zoom webhook rejected');
           res.writeHead(400);
-          res.end(JSON.stringify({ error: String(err) }));
+          res.end(JSON.stringify({ error: 'Invalid request' }));
         }
       });
       return;
@@ -816,8 +888,7 @@ function handleApi(
           const transcripts = await getOtterTranscripts(20);
           json(res, { configured: true, transcripts });
         } catch (err) {
-          res.writeHead(500);
-          res.end(JSON.stringify({ error: String(err) }));
+          internalError(res, err, 'Web UI API error');
         }
       })();
       return;
@@ -958,6 +1029,21 @@ function json(res: http.ServerResponse, data: unknown): void {
   res.end(JSON.stringify(data));
 }
 
+/**
+ * Log the real error server-side, return a sanitized body to the client.
+ * All 500s go through here — raw error/SQL/stack text never leaves the
+ * process (ISC-36).
+ */
+function internalError(
+  res: http.ServerResponse,
+  err: unknown,
+  context: string,
+): void {
+  logger.error({ err }, context);
+  res.writeHead(500);
+  res.end(JSON.stringify({ error: 'Internal error' }));
+}
+
 function sendHtml(
   res: http.ServerResponse,
   status: number,
@@ -1040,6 +1126,27 @@ export function startWebUI(): http.Server {
     }
   });
   return server;
+}
+
+// Standalone mode: `npm run web` (tsx src/web-ui.ts) boots the dashboard on
+// its own. Boots through the composition root (initCore) so the DB is
+// initialized. Dynamic import keeps the heavy channel modules out of the test
+// import graph — web-ui.test.ts imports `route` directly.
+const isDirectRun =
+  process.argv[1] &&
+  new URL(import.meta.url).pathname ===
+    new URL(`file://${process.argv[1]}`).pathname;
+
+if (isDirectRun) {
+  import('./bootstrap.js')
+    .then(({ initCore }) => {
+      initCore();
+      startWebUI();
+    })
+    .catch((err) => {
+      logger.error({ err }, 'Failed to start standalone Web UI');
+      process.exit(1);
+    });
 }
 
 // ── Dashboard HTML ────────────────────────────────────────────────────────────

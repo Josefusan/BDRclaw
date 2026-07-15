@@ -23,7 +23,7 @@ import {
 } from './container-runner.js';
 import {
   cleanupOrphans,
-  ensureContainerRuntimeRunning,
+  isContainerRuntimeAvailable,
   PROXY_BIND_HOST,
 } from './container-runtime.js';
 import {
@@ -57,18 +57,12 @@ import {
   shouldDropMessage,
 } from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import {
-  getProspectByContact,
-  initBDRDatabase,
-  markInboundProcessed,
-} from './bdr-db.js';
+import { getProspectByContact, markInboundProcessed } from './bdr-db.js';
 import type { TouchChannel } from './bdr-types.js';
 import { startBDRBrain } from './bdr-brain.js';
-import './gmail-bdr-actions.js';
-import './linkedin-bdr-actions.js';
-import './sms-bdr-actions.js';
-import './telegram-bdr-actions.js';
-import './twitter-bdr-actions.js';
+// Composition root: initializes the BDR database and registers all channel
+// action handlers (the five *-bdr-actions side-effect modules live there).
+import { initCore } from './bootstrap.js';
 import { startWebUI } from './web-ui.js';
 import { startAgenticLoop } from './agents/loop.js';
 import { processReply } from './agents/reply-handler.js';
@@ -483,11 +477,6 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureContainerSystemRunning(): void {
-  ensureContainerRuntimeRunning();
-  cleanupOrphans();
-}
-
 /**
  * Parse a channel JID into a BDR (channel, contactId) pair for prospect lookup.
  * JID conventions are prefix-based (see each channel's *ToJid helper):
@@ -519,10 +508,22 @@ function parseProspectJid(
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
   initDatabase();
-  initBDRDatabase();
+  initCore();
   logger.info('Database initialized');
+
+  // Containerless mode: probe the runtime at boot but never die without it.
+  // The BDR loop, web UI, webhooks, brain, and channel sends all run without
+  // Docker; only conversational agent sessions need it, and that failure is
+  // handled at point of use inside runContainerAgent().
+  if (isContainerRuntimeAvailable()) {
+    cleanupOrphans(); // best-effort — logs a warning on failure
+  } else {
+    logger.warn(
+      'container runtime unavailable — conversational agent sessions disabled',
+    );
+  }
+
   loadState();
   startWebUI();
   startBDRBrain();

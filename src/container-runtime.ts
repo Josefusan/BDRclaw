@@ -62,43 +62,25 @@ export function stopContainer(name: string): string {
   return `${CONTAINER_RUNTIME_BIN} stop -t 1 ${name}`;
 }
 
-/** Ensure the container runtime is running, starting it if needed. */
-export function ensureContainerRuntimeRunning(): void {
+/**
+ * Probe whether the container runtime is reachable. Never throws.
+ *
+ * Containerless mode: when this returns false the daemon keeps running —
+ * the BDR loop, web UI, webhooks, brain, and channel sends all work without
+ * Docker. Only conversational agent sessions (containers) are disabled, and
+ * that failure is surfaced at point of use (runContainerAgent), not at boot.
+ */
+export function isContainerRuntimeAvailable(): boolean {
   try {
     execSync(`${CONTAINER_RUNTIME_BIN} info`, {
       stdio: 'pipe',
       timeout: 10000,
     });
-    logger.debug('Container runtime already running');
+    logger.debug('Container runtime available');
+    return true;
   } catch (err) {
-    logger.error({ err }, 'Failed to reach container runtime');
-    console.error(
-      '\n╔════════════════════════════════════════════════════════════════╗',
-    );
-    console.error(
-      '║  FATAL: Container runtime failed to start                      ║',
-    );
-    console.error(
-      '║                                                                ║',
-    );
-    console.error(
-      '║  Agents cannot run without a container runtime. To fix:        ║',
-    );
-    console.error(
-      '║  1. Ensure Docker is installed and running                     ║',
-    );
-    console.error(
-      '║  2. Run: docker info                                           ║',
-    );
-    console.error(
-      '║  3. Restart NanoClaw                                           ║',
-    );
-    console.error(
-      '╚════════════════════════════════════════════════════════════════╝\n',
-    );
-    throw new Error('Container runtime is required but failed to start', {
-      cause: err,
-    });
+    logger.debug({ err }, 'Container runtime not available');
+    return false;
   }
 }
 
