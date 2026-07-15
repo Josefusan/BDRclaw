@@ -52,6 +52,8 @@ const TICK_LABEL = 'bdr-loop-tick';
 
 let running = false;
 let tickCount = 0;
+let pendingTick: NodeJS.Timeout | null = null;
+let signalHandlersRegistered = false;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -66,18 +68,43 @@ export function startAgenticLoop(): void {
     'BDRclaw agentic loop starting',
   );
 
-  // Register graceful shutdown
-  const stop = (signal: string) => {
-    logger.info(
-      { signal },
-      'Agentic loop: shutdown signal received, will stop after current tick',
-    );
-    running = false;
-  };
-  process.on('SIGTERM', () => stop('SIGTERM'));
-  process.on('SIGINT', () => stop('SIGINT'));
+  // Register graceful shutdown (once per process — the loop can now be
+  // started/stopped repeatedly via the dashboard without leaking listeners)
+  if (!signalHandlersRegistered) {
+    signalHandlersRegistered = true;
+    const stop = (signal: string) => {
+      logger.info(
+        { signal },
+        'Agentic loop: shutdown signal received, will stop after current tick',
+      );
+      running = false;
+    };
+    process.on('SIGTERM', () => stop('SIGTERM'));
+    process.on('SIGINT', () => stop('SIGINT'));
+  }
 
   scheduleNextTick();
+}
+
+/**
+ * Stop the agentic loop cleanly. Safe to call when the loop is not running
+ * (no-op). Clears the pending tick timer immediately; a tick already in
+ * flight completes its current prospects, then the scheduler exits.
+ */
+export function stopAgenticLoop(): void {
+  if (!running) {
+    if (pendingTick) {
+      clearTimeout(pendingTick);
+      pendingTick = null;
+    }
+    return;
+  }
+  running = false;
+  if (pendingTick) {
+    clearTimeout(pendingTick);
+    pendingTick = null;
+  }
+  logger.info('Agentic loop stopped via stopAgenticLoop()');
 }
 
 function scheduleNextTick(): void {
@@ -85,7 +112,8 @@ function scheduleNextTick(): void {
     logger.info('Agentic loop stopped cleanly');
     return;
   }
-  setTimeout(async () => {
+  pendingTick = setTimeout(async () => {
+    pendingTick = null;
     await runTickOnce();
     scheduleNextTick();
   }, LOOP_INTERVAL_MS);

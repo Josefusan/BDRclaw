@@ -23,6 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
 import {
+  addContactToSuppression,
   addProspect,
   addProspectToSuppression,
   enrollProspect,
@@ -40,12 +41,15 @@ import {
   getRecentImportJobs,
   getSuppressionList,
   getTodayOutboundByChannel,
+  getTouchesForProspect,
   isProspectSuppressed,
   listCampaigns,
   searchProspects,
+  SUPPRESSION_CHANNELS,
   updateProspectStage,
   upsertCampaign,
 } from './bdr-db.js';
+import type { SuppressionChannel } from './bdr-db.js';
 import { STORE_DIR } from './config.js';
 import { verifyUnsubscribeToken } from './email-compliance.js';
 import { renderPrivacyContent, renderTermsContent } from './legal-pages.js';
@@ -55,11 +59,43 @@ import {
   enrollAllActiveProspects,
   startBuilderSession,
 } from './campaign-builder.js';
-import { getLoopStatus } from './agents/loop.js';
+import {
+  getLoopStatus,
+  startAgenticLoop,
+  stopAgenticLoop,
+} from './agents/loop.js';
 import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
+import { PROSPECT_STAGES } from './bdr-types.js';
 import type { CampaignStatus, ProspectStage } from './bdr-types.js';
+
+/** Valid campaign statuses for the PATCH allowlist (mirrors CampaignStatus). */
+const CAMPAIGN_STATUSES: CampaignStatus[] = [
+  'draft',
+  'active',
+  'paused',
+  'completed',
+  'archived',
+];
+
+/**
+ * Outbound send action types. If NONE of these has a registered handler, the
+ * channel skill modules were never imported in this process — starting the
+ * loop would make every send silently no-op ("No action handler registered").
+ * Both real entry points (daemon and standalone web UI) register them via
+ * bootstrap.ts; this guard is the honest error for anything else.
+ */
+const SEND_ACTION_TYPES = [
+  'send_email',
+  'linkedin_connect',
+  'linkedin_dm',
+  'twitter_dm',
+  'instagram_dm',
+  'telegram_dm',
+  'whatsapp_dm',
+  'send_sms',
+] as const;
 import { analyzeMeeting } from './agents/meeting-intelligence.js';
 import { processOration } from './agents/oration.js';
 import {
@@ -235,7 +271,7 @@ export function route(
 
   // CORS for local dev
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (method === 'OPTIONS') {
@@ -378,6 +414,26 @@ function handleApi(
       return;
     }
 
+    // Prospect detail: full record + touch timeline + suppression flag
+    // (ISC-69). Must stay AFTER the /api/prospects/hot exact match.
+    if (method === 'GET' && pathname.startsWith('/api/prospects/')) {
+      const parts = pathname.split('/');
+      if (parts.length === 4 && parts[3]) {
+        const prospect = getProspectById(parts[3]);
+        if (!prospect) {
+          res.writeHead(404);
+          res.end(JSON.stringify({ error: 'Prospect not found' }));
+          return;
+        }
+        json(res, {
+          ...prospect,
+          touches: getTouchesForProspect(prospect.id),
+          suppressed: isProspectSuppressed(prospect),
+        });
+        return;
+      }
+    }
+
     if (method === 'GET' && pathname === '/api/brain/runs') {
       const limit = parseInt(url.searchParams.get('limit') ?? '10', 10);
       json(res, getRecentBrainRuns(limit));
@@ -396,6 +452,46 @@ function handleApi(
         ts: new Date().toISOString(),
         loop: getLoopStatus(),
       });
+      return;
+    }
+
+    // ── Loop control (ISC-68, ISC-79) ─────────────────────────────────────────
+
+    if (method === 'POST' && pathname === '/api/loop/start') {
+      (async () => {
+        try {
+          // Probe the action-handler registry: if no channel skill registered
+          // a send handler, this process cannot actually send — refuse
+          // honestly instead of starting a loop whose sends all no-op.
+          const { getActionHandler } = await import('./bdr-brain.js');
+          const channelsLoaded = SEND_ACTION_TYPES.some(
+            (t) => getActionHandler(t) !== undefined,
+          );
+          if (!channelsLoaded) {
+            res.writeHead(409);
+            res.end(
+              JSON.stringify({
+                error:
+                  'channels not loaded in this process — run the daemon (npm run dev) or the standalone web UI (npm run web)',
+                loop: getLoopStatus(),
+              }),
+            );
+            return;
+          }
+          startAgenticLoop();
+          logger.info('Agentic loop started via dashboard');
+          json(res, { ok: true, loop: getLoopStatus() });
+        } catch (err) {
+          internalError(res, err, 'Loop start error');
+        }
+      })();
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/loop/stop') {
+      stopAgenticLoop();
+      logger.info('Agentic loop stopped via dashboard');
+      json(res, { ok: true, loop: getLoopStatus() });
       return;
     }
 
@@ -436,6 +532,50 @@ function handleApi(
     if (method === 'GET' && pathname === '/api/suppression') {
       const entries = getSuppressionList();
       json(res, { count: entries.length, entries });
+      return;
+    }
+
+    // Manually suppress a contact identifier (ISC-78). Channel is required so
+    // the key lands in the namespace isProspectSuppressed() actually checks.
+    if (method === 'POST' && pathname === '/api/suppression') {
+      readBody(req, (body) => {
+        try {
+          const data = JSON.parse(body) as {
+            channel?: string;
+            contact?: string;
+          };
+          if (typeof data.contact !== 'string' || !data.contact.trim()) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'contact is required' }));
+            return;
+          }
+          if (
+            !SUPPRESSION_CHANNELS.includes(data.channel as SuppressionChannel)
+          ) {
+            res.writeHead(400);
+            res.end(
+              JSON.stringify({
+                error: `channel is required — one of: ${SUPPRESSION_CHANNELS.join(', ')}`,
+              }),
+            );
+            return;
+          }
+          const entry = addContactToSuppression(
+            data.channel as SuppressionChannel,
+            data.contact,
+            'manual:dashboard',
+          );
+          logger.info(
+            { contact: entry.contact },
+            'Contact suppressed via dashboard',
+          );
+          res.writeHead(201);
+          res.end(JSON.stringify({ ok: true, entry }));
+        } catch {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        }
+      });
       return;
     }
 
@@ -522,6 +662,27 @@ function handleApi(
       return;
     }
 
+    // Suppress a prospect from the dashboard drawer (ISC-77/ISC-78). Same
+    // single authoritative path the unsubscribe link and STOP replies use.
+    if (
+      method === 'POST' &&
+      pathname.startsWith('/api/prospects/') &&
+      pathname.endsWith('/suppress')
+    ) {
+      const id = pathname.split('/')[3];
+      const prospect = getProspectById(id);
+      if (!prospect) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Prospect not found' }));
+        return;
+      }
+      addProspectToSuppression(prospect, 'manual:dashboard');
+      updateProspectStage(prospect.id, 'unsubscribed');
+      logger.info({ prospectId: id }, 'Prospect suppressed via dashboard');
+      json(res, { ok: true, prospect: getProspectById(id) });
+      return;
+    }
+
     if (method === 'PATCH' && pathname.startsWith('/api/prospects/')) {
       const id = pathname.split('/')[3];
       readBody(req, (body) => {
@@ -533,10 +694,20 @@ function handleApi(
             res.end(JSON.stringify({ error: 'Prospect not found' }));
             return;
           }
-          if (data.stage) {
+          if (data.stage !== undefined) {
+            if (!PROSPECT_STAGES.includes(data.stage as ProspectStage)) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({
+                  error: `Invalid stage — must be one of: ${PROSPECT_STAGES.join(', ')}`,
+                }),
+              );
+              return;
+            }
+            // Single authoritative CRM-push path (ISC-77).
             updateProspectStage(id, data.stage as ProspectStage);
           }
-          json(res, { ok: true });
+          json(res, { ok: true, prospect: getProspectById(id) });
         } catch {
           res.writeHead(400);
           res.end(JSON.stringify({ error: 'Invalid request' }));
@@ -582,6 +753,18 @@ function handleApi(
             status: CampaignStatus;
             name: string;
           }>;
+          if (
+            data.status !== undefined &&
+            !CAMPAIGN_STATUSES.includes(data.status)
+          ) {
+            res.writeHead(400);
+            res.end(
+              JSON.stringify({
+                error: `Invalid status — must be one of: ${CAMPAIGN_STATUSES.join(', ')}`,
+              }),
+            );
+            return;
+          }
           upsertCampaign({
             ...campaign,
             ...data,

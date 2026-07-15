@@ -1178,3 +1178,61 @@ export function getSuppressionList(): SuppressionEntry[] {
     )
     .all() as SuppressionEntry[];
 }
+
+// ── Manual suppression (dashboard "suppress a contact" form) ─────────────────
+
+/**
+ * Channels a manual suppression entry can target. `sms`, `whatsapp`, and
+ * `phone` all normalize into the shared `phone:` key namespace — one opt-out
+ * covers every phone-based channel, matching how prospectContactKeys() keys
+ * a prospect's phone number.
+ */
+export const SUPPRESSION_CHANNELS = [
+  'email',
+  'phone',
+  'sms',
+  'whatsapp',
+  'linkedin',
+  'twitter',
+  'telegram',
+  'instagram',
+] as const;
+export type SuppressionChannel = (typeof SUPPRESSION_CHANNELS)[number];
+
+/**
+ * Add a single contact identifier to the global suppression list.
+ *
+ * The contact is normalized into the EXACT key format prospectContactKeys()
+ * produces (email lowercased, phone stripped of leading '+', linkedin URL
+ * stripped of query/trailing slash). Anything else would create an entry
+ * isProspectSuppressed() never matches — a silently ineffective opt-out.
+ */
+export function addContactToSuppression(
+  channel: SuppressionChannel,
+  contact: string,
+  reason: string,
+): SuppressionEntry {
+  const trimmed = contact.trim();
+  let key: string;
+  switch (channel) {
+    case 'email':
+      key = `email:${trimmed.toLowerCase()}`;
+      break;
+    case 'phone':
+    case 'sms':
+    case 'whatsapp':
+      key = `phone:${trimmed.replace(/^\+/, '')}`;
+      break;
+    case 'linkedin':
+      key = `linkedin:${trimmed.split('?')[0].replace(/\/$/, '')}`;
+      break;
+    default:
+      key = `${channel}:${trimmed}`;
+  }
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT OR IGNORE INTO bdr_suppression (contact, channel, reason, created_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(key, channel, reason, now);
+  return { contact: key, channel, reason, created_at: now };
+}

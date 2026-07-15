@@ -41,10 +41,12 @@
           <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">B</div>
           <span class="text-white font-bold text-lg tracking-tight">BDRclaw</span>
         </div>
-        <div class="flex items-center gap-1.5 mt-3">
+        <button @click="openLoopModal()" :aria-label="loop.running ? 'Stop the outreach loop' : 'Start the outreach loop'"
+          class="focus-ring group flex items-center gap-1.5 mt-3 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-zinc-800/60 transition-colors">
           <div class="w-1.5 h-1.5 rounded-full" :class="loop.running ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'"></div>
           <span class="text-zinc-500 text-xs" x-text="loop.running ? 'Outreach loop active' : 'Loop stopped'"></span>
-        </div>
+          <span class="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" :class="loop.running ? 'text-amber-400' : 'text-emerald-400'" x-text="loop.running ? 'Stop' : 'Start'"></span>
+        </button>
       </div>
 
       <div class="px-5 py-2 shrink-0"><p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Outreach</p></div>
@@ -258,7 +260,11 @@
                   <h2 class="font-semibold text-white text-sm">Autopilot</h2>
                 </div>
                 <p x-show="loop.running" class="text-sm text-zinc-400">The outreach loop is running<span x-show="loop.tickCount"> — <span class="tabular" x-text="loop.tickCount"></span> ticks this session</span>.</p>
-                <p x-show="!loop.running" class="text-sm text-zinc-400">The autonomous outreach loop is currently stopped. Campaigns will not send until it starts — start the BDRclaw daemon to resume.</p>
+                <p x-show="!loop.running" class="text-sm text-zinc-400">The autonomous outreach loop is currently stopped. Campaigns will not send until it starts.</p>
+                <button @click="openLoopModal()"
+                  class="focus-ring mt-3 text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors"
+                  :class="loop.running ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'"
+                  x-text="loop.running ? 'Stop loop' : 'Start loop'"></button>
                 <div x-show="stats.brain_last_run" class="mt-4 pt-4 border-t border-zinc-800">
                   <p class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Last brain run</p>
                   <p class="text-xs text-zinc-500" x-text="stats.brain_last_run ? (timeAgo(stats.brain_last_run.run_at) + ' · ' + stats.brain_last_run.status) : ''"></p>
@@ -348,7 +354,7 @@
                 </thead>
                 <tbody class="divide-y divide-zinc-800/60">
                   <template x-for="p in prospects" :key="p.id">
-                    <tr class="hover:bg-zinc-800/30 transition-colors">
+                    <tr @click="openProspect(p.id)" class="hover:bg-zinc-800/30 transition-colors cursor-pointer">
                       <td class="px-5 py-3">
                         <div class="flex items-center gap-3 min-w-0">
                           <div class="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-semibold text-xs shrink-0" x-text="(p.name||'?').substring(0,1)"></div>
@@ -475,11 +481,22 @@
           <div id="chat-messages" class="flex-1 overflow-y-auto p-8 space-y-4 max-w-3xl mx-auto w-full">
             <template x-for="(msg, i) in builderMessages" :key="i">
               <div class="flex" :class="msg.role==='user'?'justify-end':''">
-                <div class="max-w-xl px-5 py-3.5 text-sm leading-relaxed whitespace-pre-wrap" :class="msg.role==='user'?'chat-bubble-user':'chat-bubble-ai'" x-text="msg.content"></div>
+                <div class="max-w-xl px-5 py-3.5 text-sm leading-relaxed whitespace-pre-wrap"
+                  :class="msg.role==='user' ? 'chat-bubble-user' : (msg.error ? 'chat-bubble-ai !border-red-500/40 !text-red-300' : 'chat-bubble-ai')"
+                  x-text="msg.content"></div>
               </div>
             </template>
+            <!-- Inline retry for a failed /chat call — the error is never silent -->
+            <div x-show="builderRetryMsg && !builderLoading" class="flex">
+              <button @click="retryBuilder()"
+                class="focus-ring flex items-center gap-2 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 px-4 py-2 rounded-lg font-medium transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Retry last message
+              </button>
+            </div>
+            <!-- Typing indicator while awaiting the builder -->
             <div x-show="builderLoading" class="flex">
-              <div class="chat-bubble-ai px-5 py-3.5 flex items-center gap-2">
+              <div class="chat-bubble-ai px-5 py-3.5 flex items-center gap-2" aria-label="BDR Claude is typing">
                 <div class="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce"></div>
                 <div class="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style="animation-delay:.15s"></div>
                 <div class="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style="animation-delay:.3s"></div>
@@ -706,12 +723,12 @@
           <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <h2 class="font-semibold text-white mb-1">Compliance</h2>
             <p class="text-sm text-zinc-500 mb-4">CAN-SPAM and TCPA opt-outs are enforced automatically — unsubscribes and STOP replies suppress a contact across every channel, permanently.</p>
-            <div class="flex items-center gap-4 flex-wrap">
+            <div class="flex items-center gap-4 flex-wrap mb-5">
               <div class="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3">
                 <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Suppression list</p>
                 <p class="text-xl font-bold text-white mt-0.5">
                   <span x-text="suppressionCount ?? '—'"></span>
-                  <span class="text-xs font-normal text-zinc-600" x-text="suppressionCount===null ? (suppressionLoaded ? ' unavailable' : '') : ' contacts'"></span>
+                  <span class="text-xs font-normal text-zinc-600" x-text="suppressionCount===null ? (suppressionLoaded ? ' unavailable' : '') : ' entries'"></span>
                 </p>
               </div>
               <div class="flex flex-col gap-1.5 text-sm">
@@ -719,6 +736,42 @@
                 <a href="/terms" target="_blank" class="text-orange-400 hover:text-orange-300 transition-colors">Terms of service →</a>
                 <a href="/unsubscribe" target="_blank" class="text-orange-400 hover:text-orange-300 transition-colors">Unsubscribe page →</a>
               </div>
+            </div>
+
+            <!-- Suppress a contact manually -->
+            <div class="border-t border-zinc-800 pt-5">
+              <h3 class="text-sm font-semibold text-zinc-300 mb-1">Suppress a contact</h3>
+              <p class="text-xs text-zinc-600 mb-3">Blocks all future outreach to this identifier, permanently. Phone entries cover both SMS and WhatsApp.</p>
+              <div class="flex gap-2 flex-wrap">
+                <select x-model="suppForm.channel"
+                  class="focus-ring bg-zinc-950 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40">
+                  <template x-for="c in suppressChannels" :key="c[0]">
+                    <option :value="c[0]" x-text="c[1]"></option>
+                  </template>
+                </select>
+                <input x-model="suppForm.contact" @keydown.enter="addSuppression()" type="text" placeholder="e.g. sarah@acme.com or +15550001111"
+                  class="focus-ring flex-1 min-w-52 bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+                <button @click="addSuppression()" :disabled="!suppForm.contact.trim()||suppFormBusy"
+                  class="focus-ring bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 text-red-400 border border-red-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  x-text="suppFormBusy ? 'Suppressing…' : 'Suppress'"></button>
+              </div>
+            </div>
+
+            <!-- Actual suppression entries -->
+            <div x-show="suppressionLoaded && suppressionEntries.length>0" class="border-t border-zinc-800 mt-5 pt-4">
+              <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Suppressed contacts</h3>
+              <div class="max-h-64 overflow-y-auto divide-y divide-zinc-800/60 bg-zinc-950 border border-zinc-800 rounded-lg">
+                <template x-for="e in suppressionEntries" :key="e.contact">
+                  <div class="px-4 py-2.5 flex items-center gap-3">
+                    <code class="text-xs text-zinc-300 truncate flex-1" x-text="e.contact"></code>
+                    <span x-show="e.reason" class="text-xs text-zinc-600 shrink-0 truncate max-w-40" x-text="e.reason"></span>
+                    <span class="text-xs text-zinc-600 shrink-0 whitespace-nowrap" x-text="timeAgo(e.created_at)"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div x-show="suppressionLoaded && suppressionEntries.length===0 && suppressionCount!==null" class="border-t border-zinc-800 mt-5 pt-4 text-xs text-zinc-600">
+              No suppressed contacts yet. STOP replies, unsubscribe clicks, and manual entries all land here.
             </div>
           </div>
         </div>
@@ -1184,6 +1237,143 @@
         </template>
       </div>
       <button @click="setupKey=null" class="w-full mt-5 bg-orange-500 hover:bg-orange-400 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">Got it</button>
+    </div>
+  </div>
+
+  <!-- ── MODAL: Loop start/stop confirm (ISC-68, ISC-79) ── -->
+  <div x-show="loopModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Outreach loop control">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="loopModal=false"></div>
+    <div class="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-white text-lg" x-text="loop.running ? 'Stop the outreach loop?' : 'Start the outreach loop?'"></h2>
+        <button @click="loopModal=false" class="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+
+      <!-- Start: real-send warning -->
+      <div x-show="!loop.running">
+        <div class="bg-amber-500/[0.08] border border-amber-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
+          <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <div>
+            <p class="text-sm font-semibold text-amber-300">Starting the loop will send real messages to due prospects.</p>
+            <p class="text-xs text-amber-300/70 mt-1">Every message is composed per prospect and passes the quality gate first, but sends are real and go out on your connected channels within the next tick.</p>
+          </div>
+        </div>
+        <p class="text-sm text-zinc-400 mb-5">Active campaign enrollments that are due will be processed on the loop's schedule. You can stop it at any time from this same control.</p>
+      </div>
+
+      <!-- Stop: what stopping means -->
+      <div x-show="loop.running">
+        <p class="text-sm text-zinc-400 mb-5">Any send already in flight completes, then no further messages go out until the loop is started again. Inbound replies are still received and classified.</p>
+      </div>
+
+      <div class="flex gap-3">
+        <button @click="loopModal=false" class="flex-1 border border-zinc-700 hover:border-zinc-500 text-zinc-400 py-2.5 rounded-lg text-sm font-medium transition-colors">Cancel</button>
+        <button @click="confirmLoopToggle()" :disabled="loopBusy"
+          class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
+          :class="loop.running ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950' : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950'"
+          x-text="loopBusy ? 'Working…' : (loop.running ? 'Stop loop' : 'Start sending')"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DRAWER: Prospect detail (ISC-69, ISC-77) ── -->
+  <div x-show="drawerOpen" class="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Prospect detail">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeDrawer()"></div>
+    <div x-show="drawerOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+         class="absolute inset-y-0 right-0 w-full max-w-md bg-zinc-900 border-l border-zinc-700 shadow-2xl flex flex-col">
+
+      <!-- Loading -->
+      <div x-show="drawerLoading" class="p-6 space-y-3">
+        <div class="skeleton h-8 w-2/3"></div>
+        <div class="skeleton h-4 w-1/2"></div>
+        <div class="skeleton h-24 mt-4"></div>
+        <div class="skeleton h-40"></div>
+      </div>
+
+      <template x-if="!drawerLoading && drawerProspect">
+        <div class="flex flex-col h-full min-h-0">
+          <!-- Header -->
+          <div class="px-6 py-5 border-b border-zinc-800 shrink-0">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-11 h-11 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-bold text-base shrink-0" x-text="(drawerProspect.name||'?').substring(0,1)"></div>
+                <div class="min-w-0">
+                  <h2 class="font-bold text-white text-lg truncate" x-text="drawerProspect.name"></h2>
+                  <p class="text-xs text-zinc-500 truncate" x-text="(drawerProspect.title||'') + ' · ' + (drawerProspect.company||'')"></p>
+                </div>
+              </div>
+              <button @click="closeDrawer()" class="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <div x-show="drawerProspect.suppressed" class="mt-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-300">
+              This contact is on the suppression list — no messages will ever be sent.
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto min-h-0">
+            <!-- Stage control -->
+            <div class="px-6 py-4 border-b border-zinc-800">
+              <p class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Stage</p>
+              <div class="flex items-center gap-3">
+                <span class="text-xs px-2.5 py-1 rounded-full font-medium border whitespace-nowrap" :class="stageColor(drawerProspect.stage)" x-text="stageLabel(drawerProspect.stage)"></span>
+                <select x-model="drawerStage" @change="changeStage()" :disabled="stageBusy"
+                  class="focus-ring flex-1 bg-zinc-950 border border-zinc-700 text-zinc-300 rounded-lg px-3 py-2 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-orange-500/40" aria-label="Change stage">
+                  <template x-for="s in allStages" :key="s[0]">
+                    <option :value="s[0]" x-text="s[1]"></option>
+                  </template>
+                </select>
+              </div>
+              <p class="text-xs text-zinc-600 mt-2" x-text="stageBusy ? 'Saving + syncing to CRM…' : 'Stage changes push to every connected CRM.'"></p>
+            </div>
+
+            <!-- Contact info -->
+            <div class="px-6 py-4 border-b border-zinc-800">
+              <p class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Contact</p>
+              <div class="space-y-1.5 text-sm">
+                <p x-show="drawerProspect.email" class="text-zinc-300 truncate"><span class="text-zinc-600">Email · </span><span x-text="drawerProspect.email"></span></p>
+                <p x-show="drawerProspect.phone" class="text-zinc-300 truncate"><span class="text-zinc-600">Phone · </span><span x-text="drawerProspect.phone"></span></p>
+                <p x-show="drawerProspect.linkedin_url" class="text-zinc-300 truncate"><span class="text-zinc-600">LinkedIn · </span><span x-text="drawerProspect.linkedin_url"></span></p>
+                <p x-show="!drawerProspect.email && !drawerProspect.phone && !drawerProspect.linkedin_url" class="text-zinc-600 text-xs">No contact identifiers on record.</p>
+              </div>
+            </div>
+
+            <!-- Touch timeline -->
+            <div class="px-6 py-4">
+              <p class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Timeline <span class="text-zinc-700 normal-case tracking-normal" x-text="'(' + drawerTouches.length + ' touch' + (drawerTouches.length===1?'':'es') + ')'"></span></p>
+              <div x-show="drawerTouches.length===0" class="text-xs text-zinc-600 py-2">No touches yet — this prospect has not been contacted.</div>
+              <div class="space-y-3">
+                <template x-for="t in drawerTouches" :key="t.id">
+                  <div class="flex items-start gap-3">
+                    <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                         :class="t.direction==='inbound' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-400'">
+                      <svg x-show="t.direction==='outbound'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M17 7H8m9 0v9"/></svg>
+                      <svg x-show="t.direction==='inbound'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M17 7L7 17m0 0h9m-9 0V8"/></svg>
+                    </div>
+                    <div class="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium text-zinc-300 capitalize" x-text="t.channel"></span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full border font-medium" :class="touchStatusColor(t.status)" x-text="t.status"></span>
+                        <span class="text-xs text-zinc-600 ml-auto whitespace-nowrap" x-text="timeAgo(t.sent_at)"></span>
+                      </div>
+                      <p x-show="t.subject" class="text-xs text-zinc-400 mt-1.5 truncate font-medium" x-text="t.subject"></p>
+                      <p x-show="t.content" class="text-xs text-zinc-500 mt-1 whitespace-pre-wrap break-words max-h-28 overflow-y-auto" x-text="t.content"></p>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer: suppress -->
+          <div class="px-6 py-4 border-t border-zinc-800 shrink-0">
+            <button x-show="!drawerProspect.suppressed" @click="suppressProspect()" :disabled="suppressBusy"
+              class="focus-ring w-full py-2.5 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-60"
+              :class="suppressArmed ? 'bg-red-500 hover:bg-red-400 text-white border-red-500' : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'"
+              x-text="suppressBusy ? 'Suppressing…' : (suppressArmed ? 'Confirm — block all outreach permanently' : 'Suppress this contact')"></button>
+            <p x-show="suppressArmed && !suppressBusy" class="text-xs text-zinc-600 mt-2 text-center">Click again to confirm. This suppresses every contact identifier and cannot be undone from the dashboard.</p>
+            <p x-show="drawerProspect.suppressed" class="text-xs text-zinc-600 text-center">Contact is suppressed.</p>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 

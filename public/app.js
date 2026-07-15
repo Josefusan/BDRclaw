@@ -95,6 +95,30 @@ const STAGES = [
   ['meeting_booked', 'Meeting booked'],
 ];
 
+/* Every stage a prospect can be moved to from the detail drawer. */
+const ALL_STAGES = [
+  ['identified', 'New'],
+  ['outreach_sent', 'Contacted'],
+  ['follow_up', 'Follow-up'],
+  ['replied', 'Replied'],
+  ['interested', 'Hot lead'],
+  ['meeting_booked', 'Meeting set'],
+  ['handed_off', 'Handed off'],
+  ['not_interested', 'Not interested'],
+  ['unsubscribed', 'Unsubscribed'],
+];
+
+/* Channels the manual "suppress a contact" form can target (must mirror the
+   backend SUPPRESSION_CHANNELS allowlist). */
+const SUPPRESS_CHANNELS = [
+  ['email', 'Email address'],
+  ['phone', 'Phone (SMS + WhatsApp)'],
+  ['linkedin', 'LinkedIn URL'],
+  ['twitter', 'Twitter / X user ID'],
+  ['telegram', 'Telegram chat ID'],
+  ['instagram', 'Instagram ID'],
+];
+
 // Sequential orange ramp (single hue; stage order is ordinal — length carries magnitude)
 const FUNNEL_RAMP = ['#7c2d12', '#9a3412', '#c2410c', '#ea580c', '#f97316', '#fb923c'];
 
@@ -145,6 +169,25 @@ function app() {
     settingsEnvLoaded: false,
     suppressionCount: null,
     suppressionLoaded: false,
+    suppressionEntries: [],
+    suppForm: { channel: 'email', contact: '' },
+    suppFormBusy: false,
+    allStages: ALL_STAGES,
+    suppressChannels: SUPPRESS_CHANNELS,
+
+    /* Loop control (ISC-68, ISC-79) */
+    loopModal: false,
+    loopBusy: false,
+
+    /* Prospect detail drawer (ISC-69, ISC-77) */
+    drawerOpen: false,
+    drawerLoading: false,
+    drawerProspect: null,
+    drawerTouches: [],       // newest first (reversed from the API's ASC order)
+    drawerStage: '',
+    stageBusy: false,
+    suppressArmed: false,
+    suppressBusy: false,
 
     crmAdapters: [],
     aiEmailStatus: { instantly: { active: false, campaigns: [] }, salesforge: { active: false, sequences: [] } },
@@ -158,6 +201,7 @@ function app() {
     builderMessages: [],
     builderInput: '',
     builderLoading: false,
+    builderRetryMsg: null,   // last user message that failed — drives the Retry button
     builtCampaign: null,
 
     /* Modals */
@@ -279,6 +323,135 @@ function app() {
       this.showAddLead = false;
       this.showImport = false;
       this.setupKey = null;
+      this.loopModal = false;
+      this.closeDrawer();
+    },
+
+    /* ── Loop control ── */
+
+    openLoopModal() {
+      this.loopModal = true;
+    },
+
+    async confirmLoopToggle() {
+      if (this.loopBusy) return;
+      this.loopBusy = true;
+      const starting = !this.loop.running;
+      try {
+        await this.api(starting ? '/api/loop/start' : '/api/loop/stop', { method: 'POST' });
+        // Re-poll /api/health so the indicator shows the server's truth,
+        // not an optimistic client-side guess.
+        await this.loadHealth();
+        this.toast(
+          this.loop.running
+            ? 'Outreach loop started — due prospects will receive real messages'
+            : 'Outreach loop stopped — no further sends until restarted',
+          this.loop.running ? 'success' : 'info',
+        );
+        this.loopModal = false;
+      } catch (e) {
+        await this.loadHealth();
+        this.toast('Loop ' + (starting ? 'start' : 'stop') + ' failed: ' + e.message, 'error');
+      }
+      this.loopBusy = false;
+    },
+
+    /* ── Prospect detail drawer ── */
+
+    async openProspect(id) {
+      this.drawerOpen = true;
+      this.drawerLoading = true;
+      this.suppressArmed = false;
+      this.drawerProspect = null;
+      this.drawerTouches = [];
+      try {
+        const d = await this.api('/api/prospects/' + encodeURIComponent(id));
+        this.drawerProspect = d;
+        this.drawerStage = d.stage;
+        this.drawerTouches = (d.touches || []).slice().reverse(); // newest first
+      } catch (e) {
+        this.toast('Could not load prospect: ' + e.message, 'error');
+        this.drawerOpen = false;
+      }
+      this.drawerLoading = false;
+    },
+
+    closeDrawer() {
+      this.drawerOpen = false;
+      this.suppressArmed = false;
+    },
+
+    async changeStage() {
+      if (!this.drawerProspect || this.stageBusy) return;
+      if (this.drawerStage === this.drawerProspect.stage) return;
+      this.stageBusy = true;
+      try {
+        const result = await this.api('/api/prospects/' + encodeURIComponent(this.drawerProspect.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage: this.drawerStage }),
+        });
+        if (result.prospect) {
+          this.drawerProspect = { ...this.drawerProspect, ...result.prospect };
+          this.drawerStage = result.prospect.stage;
+        }
+        this.toast('Stage updated to "' + this.stageLabel(this.drawerStage) + '" — CRM sync queued', 'success');
+        await Promise.allSettled([this.loadProspects(), this.loadStats(), this.loadHotLeads()]);
+      } catch (e) {
+        this.drawerStage = this.drawerProspect.stage; // revert the select
+        this.toast('Stage change failed: ' + e.message, 'error');
+      }
+      this.stageBusy = false;
+    },
+
+    async suppressProspect() {
+      if (!this.drawerProspect || this.suppressBusy) return;
+      if (!this.suppressArmed) { this.suppressArmed = true; return; } // two-click confirm
+      this.suppressBusy = true;
+      try {
+        const result = await this.api('/api/prospects/' + encodeURIComponent(this.drawerProspect.id) + '/suppress', { method: 'POST' });
+        if (result.prospect) {
+          this.drawerProspect = { ...this.drawerProspect, ...result.prospect, suppressed: true };
+          this.drawerStage = result.prospect.stage;
+        }
+        this.toast(this.drawerProspect.name + ' suppressed across all channels', 'success');
+        await Promise.allSettled([this.loadProspects(), this.loadStats()]);
+      } catch (e) {
+        this.toast('Suppress failed: ' + e.message, 'error');
+      }
+      this.suppressArmed = false;
+      this.suppressBusy = false;
+    },
+
+    touchStatusColor(status) {
+      const m = {
+        sent: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+        delivered: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+        blocked: 'bg-red-500/10 text-red-400 border-red-500/20',
+        failed: 'bg-red-500/10 text-red-400 border-red-500/20',
+        bounced: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      };
+      return m[status] || 'bg-zinc-800 text-zinc-400 border-zinc-700';
+    },
+
+    /* ── Suppression ops (Settings) ── */
+
+    async addSuppression() {
+      if (!this.suppForm.contact.trim() || this.suppFormBusy) return;
+      this.suppFormBusy = true;
+      try {
+        const result = await this.api('/api/suppression', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: this.suppForm.channel, contact: this.suppForm.contact.trim() }),
+        });
+        this.toast('Suppressed ' + (result.entry ? result.entry.contact : this.suppForm.contact), 'success');
+        this.suppForm.contact = '';
+        await this.loadSettings();
+      } catch (e) {
+        this.toast('Could not suppress contact: ' + e.message, 'error');
+      }
+      this.suppFormBusy = false;
     },
 
     /* ── Loaders ── */
@@ -401,16 +574,19 @@ function app() {
         this.settingsEnv = null;
       }
       this.settingsEnvLoaded = true;
-      // Suppression count
+      // Suppression count + entries
       try {
         const data = await this.api('/api/suppression');
-        if (Array.isArray(data)) this.suppressionCount = data.length;
-        else if (typeof data === 'number') this.suppressionCount = data;
-        else if (data && typeof data.count === 'number') this.suppressionCount = data.count;
-        else if (data && Array.isArray(data.entries)) this.suppressionCount = data.entries.length;
-        else this.suppressionCount = null;
+        if (Array.isArray(data)) { this.suppressionCount = data.length; this.suppressionEntries = data; }
+        else if (typeof data === 'number') { this.suppressionCount = data; this.suppressionEntries = []; }
+        else if (data && Array.isArray(data.entries)) {
+          this.suppressionEntries = data.entries;
+          this.suppressionCount = typeof data.count === 'number' ? data.count : data.entries.length;
+        } else if (data && typeof data.count === 'number') { this.suppressionCount = data.count; this.suppressionEntries = []; }
+        else { this.suppressionCount = null; this.suppressionEntries = []; }
       } catch (e) {
         this.suppressionCount = null;
+        this.suppressionEntries = [];
       }
       this.suppressionLoaded = true;
       this.loadHealth();
@@ -743,12 +919,15 @@ function app() {
     async startBuilder() {
       this.builderLoading = true;
       this.builtCampaign = null;
+      this.builderRetryMsg = null;
       try {
         const data = await this.api('/api/campaigns/builder/start', { method: 'POST' });
         this.builderId = data.sessionId;
         this.builderMessages = [{ role: 'assistant', content: data.message }];
       } catch (e) {
-        this.builderMessages = [{ role: 'assistant', content: 'I could not reach the builder service (' + e.message + '). Try again in a moment.' }];
+        this.builderId = null;
+        this.builderMessages = [{ role: 'assistant', error: true, content: 'I could not reach the builder service (' + e.message + '). Type your message anyway — I will reconnect and retry automatically.' }];
+        this.toast('Builder unavailable: ' + e.message, 'error');
       }
       this.builderLoading = false;
     },
@@ -758,9 +937,31 @@ function app() {
       const msg = this.builderInput.trim();
       this.builderInput = '';
       this.builderMessages.push({ role: 'user', content: msg });
+      await this._builderSend(msg);
+    },
+
+    /* Retry the last failed message without re-adding the user bubble. */
+    async retryBuilder() {
+      if (!this.builderRetryMsg || this.builderLoading) return;
+      const msg = this.builderRetryMsg;
+      // Drop the error bubble so the retry reads as one clean exchange.
+      this.builderMessages = this.builderMessages.filter((m) => !m.error);
+      await this._builderSend(msg);
+    },
+
+    /* Shared send path with honest error recovery (feeds ISC-75): a failed
+       /chat call shows a readable toast + an inline error bubble with Retry —
+       never a silent failure. The typing indicator is builderLoading. */
+    async _builderSend(msg) {
       this.builderLoading = true;
+      this.builderRetryMsg = null;
       this.$nextTick(() => this.scrollChat());
       try {
+        // Session may be missing if /builder/start failed earlier — recover.
+        if (!this.builderId) {
+          const start = await this.api('/api/campaigns/builder/start', { method: 'POST' });
+          this.builderId = start.sessionId;
+        }
         const data = await this.api('/api/campaigns/builder/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -775,7 +976,13 @@ function app() {
           if (data.campaign) this.campaignSteps[data.campaign.id] = data.campaign.steps || [];
         }
       } catch (e) {
-        this.builderMessages.push({ role: 'assistant', content: 'Sorry — I hit an error (' + e.message + '). Say that again?' });
+        this.builderRetryMsg = msg;
+        this.builderMessages.push({
+          role: 'assistant',
+          error: true,
+          content: 'I could not process that — ' + (e.status ? 'the server returned ' + e.status + ' (' + e.message + ')' : e.message) + '. Your message was not lost.',
+        });
+        this.toast('Builder error: ' + e.message, 'error');
       }
       this.builderLoading = false;
       this.$nextTick(() => this.scrollChat());
