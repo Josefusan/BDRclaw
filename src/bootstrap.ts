@@ -32,6 +32,7 @@ import './linkedin-bdr-actions.js';
 import './sms-bdr-actions.js';
 import './telegram-bdr-actions.js';
 import './whatsapp-bdr-actions.js';
+import './instagram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 
 // Side-effect imports: CRM adapters self-register when their env is present.
