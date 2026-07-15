@@ -1,6 +1,6 @@
 # BDRclaw — Session Hand-off
 
-> **Last updated:** 2026-07-10 · **Branch:** `main` · **Head:** `514cfd6`
+> **Last updated:** 2026-07-14 · **Branch:** `main` · **Head:** `896381c`
 > Read this first when you come back. It's the "where did I leave off" file.
 > Full detail: `ISA.md` (build system-of-record), `docs/MVP-PLAN.md` (the plan), `docs/TWILIO-10DLC-SETUP.md` (SMS paperwork).
 
@@ -8,47 +8,39 @@
 
 ## TL;DR — where things stand
 
-**BDRclaw sent its first live email today.** Full chain verified end-to-end on real infrastructure: prospect imported via CSV → BDR Brain reviewed the pipeline and queued a `send_email` action → Gmail channel connected via OAuth → sequence step 1 delivered to a real inbox (Gmail messageId `19f4daebfeaba24f`). Claude API key live-verified. Gmail OAuth working (the flow itself needed a fix — see Done).
+**BDRclaw is now a real web application.** Three parallel Fable agents finished the product in one session (2026-07-14): a six-page SaaS dashboard (Overview funnel, Prospects + CSV import, Campaigns + AI builder chat, Channels with configured-vs-verified + cap meters, Activity feed, Settings) live-verified in real Chrome with zero console errors; the compliance branch merged; the two boot bugs fixed at their ingestion points (composition root `src/bootstrap.ts` + containerless mode); `.env` hydration at startup (`src/load-env.ts`); and the four outbound channels completed with compliance enforced *inside* `sendMessage()` (SMS TCPA 2-touch + suppression, WhatsApp warm-only, LinkedIn persisted daily caps, Twitter warm-reply-only, email suppression backstop). **The AI campaign builder round-trip ran live**: BDR Claude built a 7-step / 4-channel campaign from a 2-message conversation (`done:true`). Suite: **307/307**, typecheck 0, pushed.
 
-That send used the sequence **template** path (`composed: false`). The AI-composed + quality-gated path (campaign loop) is the next demo tier.
+Start it: `npm run web` → http://localhost:8931 (or BDR_WEB_PORT). `npm run brain` now works standalone. Docker no longer required to boot.
 
 ---
 
-## ✅ Done this session (2026-07-10)
+## ✅ Done this session (2026-07-14)
 
 | Item | Detail |
 |------|--------|
-| Gmail OAuth fixed + shipped | `514cfd6` — Google killed the OOB flow (Jan 2023); replaced with loopback redirect on `localhost:8976` + auto-catch server in the setup CLI |
-| Claude API | Key installed in `.env`, live-verified with a real Messages call |
-| Gmail account authorized | Sending account 1 authorized; refresh token in `store/gmail-tokens/account-1.json` |
-| First live email | Test prospect (Jordan Testwell / Acme Widgets) received sequence step 1; thread tracking active |
-| Railway CLI installed | v5.26.0 — `railway login` still pending (interactive) |
-| Compliance build (agent branch, **unmerged**) | CAN-SPAM footer + List-Unsubscribe/RFC 8058 headers, `/unsubscribe` endpoint → `bdr_suppression`, Twilio webhook signature validation, `/privacy` + `/terms` pages with 10DLC-required clauses. On local worktree branch `worktree-agent-afa8559908df401d8` — review, merge, test, push |
+| Compliance branch merged | CAN-SPAM footer + List-Unsubscribe, `/unsubscribe` → `bdr_suppression`, Twilio signature validation, `/privacy` + `/terms` |
+| Dashboard v2 | `public/` rebuilt (index.html + app.js + styles.css), no build step, Tailwind CDN + Alpine, inline-SVG funnel/sparkline/meters, empty states everywhere, honest loop-stopped + configured-vs-verified states |
+| Backend APIs | `/api/channels/status` (7-channel configured/verified/limits/usedToday), `/api/settings/env` (missing var names), `/api/suppression`; all 500s → `{error:"Internal error"}` |
+| Bug 1 (brain crash) | Composition root `src/bootstrap.ts` (`initCore()`), real entry `src/brain-cli.ts` — verified exit 0 standalone |
+| Bug 2 (Docker fatal) | `isContainerRuntimeAvailable()` probe at boot (warn + continue), check moved to point-of-use in `runContainerAgent()` — verified boot without Docker |
+| Bug 3 (.env hydration) | DECIDED: hydrate at startup. `src/load-env.ts`, first import of all three entry points; deployment env vars always win |
+| Channels | Compliance inside `sendMessage()` per channel (`src/channels/compliance.ts`): SMS TCPA+suppression, WhatsApp warm-only, LinkedIn caps persisted (`store/linkedin-daily-usage.json`), Twitter warm-reply-only (cold-DM template deleted), email suppression backstop, self-disable tests. 40+ new channel tests |
+| Live builder round-trip | `/api/campaigns/builder/start`+`/chat` → 7-step campaign, `done:true`, real Claude API |
 
----
+## ⚠️ New gotchas (2026-07-14)
 
-## 🐛 Bugs found by the live test (fixes scoped, not yet written)
+- **Shell `ANTHROPIC_API_KEY` shadows `.env`** — hydration never overrides existing env vars, so a stale exported key (e.g. from a Claude Code session) causes 401s. Run `env -u ANTHROPIC_API_KEY npm run web` if the shell exports one.
+- **LinkedIn daily counters** live in `store/linkedin-daily-usage.json` (not SQLite) — same durability home as session cookies.
+- **`.claude/` is now gitignored** (agent worktrees were accidentally committable).
 
-1. **`npm run brain` crashes standalone** — the script never calls `initBDRDatabase()` (only `src/index.ts` does). Fix: give the script a proper runner that inits DB (+ loads channels so action handlers register).
-2. **Hard Docker dependency kills production** — `ensureContainerSystemRunning()` FATALs when Docker is absent. The Railway container has no Docker daemon, so **the current code cannot boot on Railway** (blocks ISC-38..40). Fix: containerless mode — probe runtime availability, degrade gracefully (agent containers are only needed for conversational group-chat sessions; the BDR loop, webhooks, and reply handler don't use them).
-3. **Agents need `ANTHROPIC_API_KEY` in process env** — nothing hydrates `.env` into `process.env` for the `new Anthropic()` call sites; works only if the launcher exports it (launchd plist, Railway env vars, or `set -a; source .env`). Decide: keep as deployment contract (document it) or hydrate at startup.
+## 👉 Next actions
 
----
-
-## 👉 Next actions (in priority order)
-
-### Code (next session)
-1. **Merge the compliance branch** — review `worktree-agent-afa8559908df401d8`, run full suite, merge to main, push.
-2. **Containerless mode** (bug 2) — required before Railway deploy can work at all.
-3. **Fix `npm run brain`** (bug 1).
-4. **AI-composed campaign demo** — run the campaign loop (`processEnrollment`) so Claude composes a personalized message and the quality gate judges it; this is the real product demo vs. the template send.
-
-### External / operator paperwork (parallel track)
-5. **Railway**: `railway login`, then deploy (volume-mount SQLite, env vars, DNS) → kills the `bdrclaw.dev/api/health` 404 → flips ISC-31/32 from DEFERRED-VERIFY once webhooks round-trip.
-6. **Twilio 10DLC**: confirm EIN is ≥30 days old (also gates the toll-free bridge since Feb 2026), upgrade to paid account, get legal entity name + mailing address (also needed for the CAN-SPAM footer), and file **only after** the privacy/opt-in pages are live — filing against a bare site risks rejection + clock restart. Treat "campaign denied" as a live branch.
-7. **Email deliverability** (before real campaigns): SPF/DKIM/DMARC + domain warmup (2–4 weeks); demo on seeded inboxes until then. Ship List-Unsubscribe/CAN-SPAM (item 1) before any real email campaign activates.
-
-**Honest effort accounting:** ~9–12 engineering days remain for the full MVP (SMS compliance engine, LinkedIn Patchright swap, phases 5–7). "Mostly paperwork" is true only of the email-demo milestone.
+1. **Cato cross-vendor audit** — was blocked (Tailscale logged out → codex unreachable). `tailscale up`, then audit the compliance-critical send logic.
+2. **LinkedIn live send** (flips ISC-57): `npm run linkedin-auth`, set `LINKEDIN_ENABLED=true`, smoke-check DOM selectors on first real DM.
+3. **Twitter creds**: Basic-tier dev account + `npm run twitter-auth`.
+4. **Railway deploy** (unchanged from last session): `railway login`, volume-mount SQLite, env vars, DNS → flips ISC-31/32/40. Containerless mode now makes this possible.
+5. **Twilio 10DLC filing** — `/privacy` + `/terms` are now live-servable, so the filing prerequisite is met once deployed.
+6. **Deliverability** (before real campaigns): SPF/DKIM/DMARC + 2-4 week warmup.
 
 ---
 
