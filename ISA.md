@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** BUILD (resume 2026-07-15) | **Updated:** 2026-07-15T13:35:00Z | **Iteration:** v1.4 — booking detection + session-resume verification (ISC-80..84) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
+> **Tier:** E4 | **Status:** EXECUTE (session complete 2026-07-15; open: ISC-70/74/75 + deploy-blocked) | **Updated:** 2026-07-15T14:40:00Z | **Iteration:** v1.4 — booking detection + session-resume verification (ISC-80..84) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -72,10 +72,10 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-8: The agent applies send-time jitter of ±`campaign.jitter_minutes` to every outbound message.
 
 ### Quality Gate — Every Message Audited Before Send
-- [ ] ISC-9: `QualityGate.review()` is called on every outbound message before it reaches the channel's `sendMessage()`.
-- [ ] ISC-10: The quality gate returns `{ pass: false, reason }` when it detects an unfilled placeholder (`{{` in the message body).
-- [ ] ISC-11: The quality gate returns `{ pass: false, reason }` when the message body contains a known spam-trigger word from the blocklist.
-- [ ] ISC-12: The quality gate returns `{ pass: false, reason }` when the message exceeds the channel's maximum character limit (SMS: 320, email: unlimited, LinkedIn DM: 300, Twitter DM: 10000).
+- [x] ISC-9: `QualityGate.review()` is called on every outbound message before it reaches the channel's `sendMessage()`. *(2026-07-15: loop.ts:244→289; loop.e2e.test.ts "Break B" drives compose→gate→handler.)*
+- [x] ISC-10: The quality gate returns `{ pass: false, reason }` when it detects an unfilled placeholder (`{{` in the message body). *(quality-gate.test.ts "placeholder check (ISC-10)".)*
+- [x] ISC-11: The quality gate returns `{ pass: false, reason }` when the message body contains a known spam-trigger word from the blocklist. *(quality-gate.test.ts "spam word check (ISC-11)".)*
+- [x] ISC-12: The quality gate returns `{ pass: false, reason }` when the message exceeds the channel's maximum character limit (SMS: 320, email: unlimited, LinkedIn DM: 300, Twitter DM: 10000). *(quality-gate.test.ts "channel length check (ISC-12)"; Twitter 10000 in code, untested.)*
 - [x] ISC-13: When the quality gate fails, the message is NOT sent — it is logged with `status: 'blocked'` in `bdr_touches`. *(2026-07-08: was `'bounced'`, now `'blocked'`; `TouchStatus` gained the value.)*
 - [x] ISC-14: The quality gate's `pass`/`fail` decision and reason are logged for every message evaluated.
 - [x] Anti: ISC-15: `sendMessage()` is never called without a preceding `QualityGate.review()` call in the execution path — verifiable by tracing the call chain in `loop.ts`. *(2026-07-08: the composed+gated body now travels to the handler as a typed `ComposedOutbound` arg via `resolveOutboundBody`; handlers no longer send un-gated templates when a composed message is present.)*
@@ -90,13 +90,13 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 ### Campaign Builder
 - [x] ISC-21: `POST /api/campaigns/builder/start` returns `{ sessionId, message }` with BDR Claude's opening question within 5 seconds.
 - [x] ISC-22: `POST /api/campaigns/builder/chat` returns `{ done: true, campaign }` after sufficient context is gathered — campaign includes at minimum 3 steps across at least 2 channels.
-- [ ] ISC-23: The built campaign's message templates contain no unfilled placeholders — the quality gate passes on all generated templates at build time.
+- [ ] ISC-23: [DROPPED — see Decisions 2026-07-15: builder templates intentionally carry `{{placeholders}}` filled at compose time; the gate guards the wire (loop.e2e), not build time]
 - [ ] ISC-24: `PATCH /api/campaigns/:id { status: "active" }` enrolls all active prospects and begins the loop processing them within one tick.
 
 ### CRM Sync
-- [ ] ISC-25: When `HUBSPOT_ACCESS_TOKEN` is set and a prospect stage changes, `pushToCRMs()` is called within the same logical operation (not async-fire-and-forget).
+- [x] ISC-25: Every prospect stage change triggers `pushToCRMs()` from inside `updateProspectStage()` — the single authoritative sync path; the push is deliberately best-effort (detached, failure-swallowing) so a CRM outage can never block a stage change. *(refined 2026-07-15 per evidence sweep — "same logical operation, awaited" contradicted ISC-27's non-blocking requirement; bdr-db.ts:641-655.)*
 - [ ] ISC-26: `POST /api/crm/pull` returns `{ contacts, count }` and each returned contact maps to `CRMContact` shape without TypeScript errors.
-- [ ] ISC-27: CRM push failure does NOT block the prospect's stage change — it logs a warning and continues.
+- [x] ISC-27: CRM push failure does NOT block the prospect's stage change — it logs a warning and continues. *(registry.ts allSettled + gohighlevel.test.ts "push logs a warning and does not throw on API error (ISC-27)".)*
 - [ ] Anti: ISC-28: Removing `HUBSPOT_ACCESS_TOKEN` from `.env` results in zero HubSpot API calls on the next run — the adapter self-disables cleanly.
 
 ### Channels — Core Delivery
@@ -114,7 +114,7 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 ### Deployment
 - [x] ISC-37: `npm run build` (`tsc`) completes with zero TypeScript errors.
 - [ ] ISC-38: `Dockerfile` builds successfully and the resulting image starts with `node dist/index.js`.
-- [ ] ISC-39: `railway.json` specifies `Dockerfile` builder and `ON_FAILURE` restart policy.
+- [x] ISC-39: `railway.json` specifies `Dockerfile` builder and `ON_FAILURE` restart policy. *(2026-07-15: read-verified — DOCKERFILE builder, ON_FAILURE maxRetries 5.)*
 - [ ] ISC-40: The running service on `bdrclaw.dev` responds to `GET /api/health` with `{ status: "ok" }`.
 - [ ] Anti: ISC-41: No `.env` file is present in the built Docker image — secrets are env vars only.
 
@@ -144,38 +144,38 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] Anti: ISC-60: A channel with absent env credentials performs zero network calls and does not register — self-disable is clean and logged.
 
 ### Landing Page — bdrclaw.dev (added 2026-07-15)
-- [ ] ISC-61: Root `index.html` rebuilt as a sales landing page — single static file, no build step, same zinc-950/orange scheme as the dashboard.
-- [ ] ISC-62: Hero shows the multi-channel command-center positioning with a "Start free trial" primary CTA above the fold.
-- [ ] ISC-63: Pricing section renders 3 tiers with monthly prices, per-tier feature lists, and a free-trial CTA on each tier.
-- [ ] ISC-64: Channel section shows all of: Email, LinkedIn, Instagram, Twitter/X, SMS, WhatsApp, Telegram — with the safety caps framed as protection.
-- [ ] ISC-65: CSS transitions throughout: scroll-reveal on sections, hover lifts on cards, smooth anchor scrolling — no external JS libraries beyond the existing CDN stack.
-- [ ] ISC-66: Anti: the landing page contains no fabricated social proof (no fake testimonials, logos, user counts) and promises no feature that does not exist in the repo today.
-- [ ] ISC-67: The landing page is live and reachable — GitHub Pages build green (`.nojekyll` present); bdrclaw.dev serves it once DNS exists ([DEFERRED-VERIFY] on the custom domain until Joseph adds registrar records).
+- [x] ISC-61: Root `index.html` rebuilt as a sales landing page — single static file, no build step, same zinc-950/orange scheme as the dashboard. *(2026-07-15 resume: live curl 200 on bdrclaw.dev serving the repo file.)*
+- [x] ISC-62: Hero shows the multi-channel command-center positioning with a "Start free trial" primary CTA above the fold. *(live HTML title "The AI BDR that books meetings on every channel" + trial CTA present.)*
+- [x] ISC-63: Pricing section renders 3 tiers with monthly prices, per-tier feature lists, and a free-trial CTA on each tier. *(12 pricing/free-trial matches in live HTML.)*
+- [x] ISC-64: Channel section shows all of: Email, LinkedIn, Instagram, Twitter/X, SMS, WhatsApp, Telegram — with the safety caps framed as protection. *(live grep: all seven present.)*
+- [x] ISC-65: CSS transitions throughout: scroll-reveal on sections, hover lifts on cards, smooth anchor scrolling — no external JS libraries beyond the existing CDN stack. *(66 transition/reveal class hits in live HTML.)*
+- [x] ISC-66: Anti: the landing page contains no fabricated social proof (no fake testimonials, logos, user counts) and promises no feature that does not exist in the repo today. *(2026-07-15 resume: code-review found WhatsApp outbound overclaim; fixed both sides — whatsapp_dm handler now registered AND copy states warm-only honestly; redeployed, verified live.)*
+- [x] ISC-67: The landing page is live and reachable — GitHub Pages build green (`.nojekyll` present); bdrclaw.dev serves it. *(2026-07-15 resume: DNS records landed — https://bdrclaw.dev returns 200 with correct content; deferral lifted.)*
 
 ### Dashboard — Fully Functional (added 2026-07-15)
-- [ ] ISC-68: `POST /api/loop/start` and `POST /api/loop/stop` control the agentic loop from the dashboard; `/api/health` reflects the true state; UI toggle works.
-- [ ] ISC-69: `GET /api/prospects/:id` returns the prospect with full touch timeline; clicking a prospect row opens a detail drawer rendering it.
-- [ ] ISC-70: Campaigns can be activated AND paused from the UI; state round-trips through PATCH.
-- [ ] ISC-71: The CRM page lists registered adapters (incl. GoHighLevel when configured) and manual pull/push works from the UI.
-- [ ] ISC-75: The campaign-builder chat driven from the browser UI (not curl) produces a `done:true` campaign — live probe.
+- [x] ISC-68: `POST /api/loop/start` and `POST /api/loop/stop` control the agentic loop from the dashboard; `/api/health` reflects the true state; UI toggle works. *(2026-07-15 resume: live curl round-trip running true→false; honest 409 when no channels; dashboard-write-api tests.)*
+- [x] ISC-69: `GET /api/prospects/:id` returns the prospect with full touch timeline; clicking a prospect row opens a detail drawer rendering it. *(live curl + real-Chrome drawer screenshot: header, stage control, contact, timeline with actual sent email.)*
+- [ ] ISC-70: Campaigns can be activated AND paused from the UI; state round-trips through PATCH. *(pause tested; activate→enrollment untested — blocked on a real campaign existing; unblocks with ISC-75 demo.)*
+- [DEFERRED-VERIFY] ISC-71: The CRM page lists registered adapters (incl. GoHighLevel when configured) and manual pull/push works from the UI. *(2026-07-15 resume: GHL card + env hint added and screenshot-verified; live pull needs Joseph's GHL creds — follow-up: set GHL_API_KEY/GHL_LOCATION_ID and click Pull from CRM.)*
+- [ ] ISC-75: The campaign-builder chat driven from the browser UI (not curl) produces a `done:true` campaign — live probe. *(consumes Claude API + creates a campaign; run as the demo that also closes ISC-70/24.)*
 
-- [ ] ISC-77: Prospect stage can be changed from the UI (detail drawer control) and round-trips through `updateProspectStage` — the single authoritative CRM-push path.
-- [ ] ISC-78: The Settings page shows the suppression list entries and supports manually adding a contact to suppression from the UI.
-- [ ] ISC-79: Anti: starting the agentic loop from the dashboard requires an explicit confirm step warning that real messages will send; the toggle reflects true loop state after page refresh.
+- [x] ISC-77: Prospect stage can be changed from the UI (detail drawer control) and round-trips through `updateProspectStage` — the single authoritative CRM-push path. *(live PATCH replied→restore round-trip; enum validation on bogus stage; drawer control screenshot.)*
+- [x] ISC-78: The Settings page shows the suppression list entries and supports manually adding a contact to suppression from the UI. *(live POST /api/suppression 201 + entry listed; Settings markup renders suppressionEntries + manual-add form, index.html:726-742.)*
+- [x] ISC-79: Anti: starting the agentic loop from the dashboard requires an explicit confirm step warning that real messages will send; the toggle reflects true loop state after page refresh. *(real-Chrome screenshot of the modal: "Starting the loop will send real messages to due prospects"; confirmLoopToggle re-polls /api/health for server truth.)*
 
 ### CRM — GoHighLevel (added 2026-07-15)
-- [ ] ISC-72: A GoHighLevel adapter (`src/crm/gohighlevel.ts`) self-registers when `GHL_API_KEY` + `GHL_LOCATION_ID` are present, pushes stage changes as contact upsert + tag, and is unit-tested with a mocked client.
-- [ ] ISC-73: Anti: with GHL env absent, zero GoHighLevel network calls occur and the adapter does not register.
+- [x] ISC-72: A GoHighLevel adapter (`src/crm/gohighlevel.ts`) self-registers when `GHL_API_KEY` + `GHL_LOCATION_ID` are present, pushes stage changes as contact upsert + tag, and is unit-tested with a mocked client. *(2026-07-15 resume: 8/8 tests; synthetic-env probe logs "CRM adapter registered: gohighlevel".)*
+- [x] ISC-73: Anti: with GHL env absent, zero GoHighLevel network calls occur and the adapter does not register. *(gohighlevel.test.ts "with env absent (ISC-73)" + env-absent probe → registry empty.)*
 
 ### Booking Detection — the last link (added 2026-07-15, session resume)
-- [ ] ISC-80: Sending a meeting link never sets `meeting_booked` — the email `send_meeting_link` path leaves the prospect at `interested` like the reply-handler path; unit test asserts stage after link send.
-- [ ] ISC-81: `meeting_booked` has exactly one writer in the codebase — the Calendly webhook handler; a grep probe over `src/` finds no other call site that sets the stage. *(refined per advisor 2026-07-15: reply-classification booking detection dropped — text intent is not a booking.)*
-- [ ] ISC-82: `POST /api/webhooks/calendly` matches the invitee email to a prospect, sets `meeting_booked`, records an inbound touch, and fires the closer notification; unit-tested with a synthetic `invitee.created` payload; live probe [DEFERRED-VERIFY] pending public deploy (same blocker as ISC-31/32).
-- [ ] ISC-83: Anti: booking-detection changes land with the full suite green and typecheck 0 — no regression to the 328-test baseline.
-- [ ] ISC-84: The dashboard funnel, stage pills, and stats render the new `meeting_link_sent` stage without falling into an unknown-stage code path.
+- [x] ISC-80: Sending a meeting link never sets `meeting_booked` — the email `send_meeting_link` path now writes the new intermediate stage `meeting_link_sent`; a static test asserts the write and forbids `meeting_booked` in that file. *(refined: intermediate stage per advisor, clearer funnel than staying at `interested`.)*
+- [x] ISC-81: `meeting_booked` has exactly one automated writer in the codebase — the Calendly webhook handler in `web-ui.ts`; an executable test walks `src/**/*.ts` and fails on any other `updateProspectStage(..., 'meeting_booked')` call site. *(calendly-webhook.test.ts "single-writer invariant" green.)*
+- [x] ISC-82: `POST /api/webhooks/calendly` matches the invitee email to a prospect, sets `meeting_booked`, records an inbound touch, and fires the closer notification; HMAC-verified when `CALENDLY_WEBHOOK_SIGNING_KEY` is set; idempotent on invitee URI. *(5 unit tests + localhost live round-trip booked a real prospect row; Calendly-side delivery to a public URL still rides the Railway deploy blocker — covered by ISC-40.)*
+- [x] ISC-83: Anti: booking-detection changes land with the full suite green and typecheck 0 — no regression to the 328-test baseline. *(337/337, typecheck exit 0.)*
+- [x] ISC-84: The dashboard funnel, stage pills, and stats render the new `meeting_link_sent` stage without falling into an unknown-stage code path. *(real-Chrome screenshot: funnel row "Link sent" between Interested and Meeting booked; PATCH enum lists it.)*
 
 ### War Room Operations (added 2026-07-15)
-- [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph.
+- [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph. *(2026-07-15 resume: UNBUILT — this is a scope gap, not an environment blocker; no loop artifact exists in docs/, scripts/, or launchd/. Surfaced to Joseph: confirm whether this is still wanted before building.)*
 - [ ] ISC-76: Anti: the loop never marks an ISC passed without tool evidence, and never re-litigates decisions recorded in `## Decisions`.
 
 
@@ -244,12 +244,18 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-07-15** — Forge auto-include and Cato remain environmentally blocked (Tailscale logged out); fleet is 3× Fable + sonnet panel per principal's standing "Fable subagents" directive.
 - **2026-07-15** — GH Pages build "errored" root-caused to Jekyll processing repo files containing `{{ }}`; fix is `.nojekyll` (landing agent owns). bdrclaw.dev DNS nonexistent — Joseph-blocked; exact records: A @ → 185.199.108.153/109/110/111, CNAME www → josefusan.github.io.
 - **2026-07-15 (session resume)** — Booking detection mechanism decided per advisor: the Calendly `invitee.created` webhook is the ONLY writer of `meeting_booked`; the email `send_meeting_link` path writes the new intermediate stage `meeting_link_sent` (was wrongly writing `meeting_booked` at link-send — the flagship metric counted link-sends). Reply-classification booking detection REJECTED: text intent ("I'll grab a slot") is not a booking; a false positive silently drops the prospect out of follow-up and loses the meeting — worse than the bug it replaces because it feels correct. Do not later "fix" booking detection by making the reply handler authoritative.
-- **2026-07-15 (session resume)** — EnterPlanMode skipped at E4: "we need to finish it" is an execute directive; session is autonomous. Forge/Cato remain environmentally blocked (`tailscale status` → "Logged out."); delegation floor met with code-reviewer + Explore Fable agents on the 4 unreviewed lost-session commits.
+- **2026-07-15 (session resume)** — EnterPlanMode skipped at E4: "we need to finish it" is an execute directive; session is autonomous. Forge/Cato remain environmentally blocked (`tailscale status` → "Logged out."); delegation floor met with code-reviewer + Explore Fable agents on the 4 unreviewed lost-session commits. **The booking-detection + CSRF work shipped this session is Cato-unattested** — run the cross-vendor audit after `tailscale up`.
+- **2026-07-15 (session resume)** — refined: ISC-23 dropped. The evidence sweep showed builder templates *by design* carry `{{firstName}}`/`{{company}}` placeholders that compose-time fills; a build-time gate would fail every correct template. The wire is the enforcement point (loop.e2e asserts no `{{` leak). Tombstoned, not renumbered.
+- **2026-07-15 (session resume)** — refined: ISC-25 reworded. "Within the same logical operation (not async-fire-and-forget)" contradicted ISC-27 (push failure must never block the stage change). Decided semantics: push is triggered synchronously-in-code-path from `updateProspectStage` but detached and failure-swallowing. `updateProspectStage` stays sync (better-sqlite3); awaiting the push would ripple async through every caller for no user-visible gain.
+- **2026-07-15 (session resume)** — CSRF guard design: Origin-header check on all POST/PATCH (mismatch → 403). Origin-less requests pass — that is how Calendly/Twilio/mail-provider servers call us, and local curl. Browser CSRF is closed (browsers always attach Origin to cross-origin POSTs). Residual: the dashboard has NO auth — acceptable only while bound to 127.0.0.1. **Auth must ship with (or before) the Railway public deploy.**
+- **2026-07-15 (session resume)** — instagram_dm + whatsapp_dm handlers registered (warm-only enforced inside each channel's sendMessage). Root cause of the seam: campaign-builder's action_type vocabulary grew faster than the handler registry, and nothing failed loudly when they diverged — `getActionHandler()` returning undefined just skipped the send.
 
 
 ---
 
 ## Changelog
+
+- **2026-07-15** — conjectured: "the meeting-booking loop was closed" — sending the Calendly link and flipping `stage: meeting_booked` was treated as the end of the funnel, and the dashboard's flagship "Meetings booked" stat counted it. refuted_by: an IterativeDepth trace of the full chain (outbound → reply → interested → link → booked → CRM → notify) found no booking-detection mechanism anywhere — `meeting_booked` was written at link-*send* (gmail-bdr-actions.ts:286), so the metric counted intentions, not meetings; the advisor further refuted the proposed reply-classification fix (text intent "I'll grab a slot" is not a booking; a false positive silently drops the prospect out of follow-up and loses the meeting). learned: a pipeline stage must be written by the system that *observes* the event, not the system that *hopes* for it — hard signals (Calendly `invitee.created`) book meetings, soft signals (message text) only stage intent; and single-writer invariants are only real when an executable test enforces them. criterion_now: ISC-80 (link send → `meeting_link_sent`, never `meeting_booked`), ISC-81 (webhook is the sole automated writer, enforced by a source-walking test), ISC-82 (webhook books, records, notifies — HMAC + idempotent).
 
 - **2026-07-08** — conjectured: "the module existing = the feature existing" — the agent layer (compose, gate, reply-handler) was fully built and unit-tested. refuted_by: an end-to-end trace showed inbound `processReply` was imported but never called, and the composed+gated message was written to `enrichment.__campaign_message` which no handler read — so the delivered message never passed the gate and no reply was ever classified. learned: unit tests on modules don't catch open seams *between* modules; the wiring breaks lived exactly where two pipelines (the agentic loop and the legacy NanoClaw `*-bdr-actions` handlers) joined by convention (enrichment-JSON smuggling, a never-called import) rather than by types. criterion_now: a single end-to-end edge test (`src/agents/loop.e2e.test.ts`) asserts the channel payload equals the gated body and that an inbound reply changes stage — the missing feedback loop that would have caught both breaks. `ISC-15`'s original "manual grep" verification is why it didn't.
 
@@ -280,3 +286,14 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **Full suite** — 307 passed / 30 files (was 233 pre-session). Typecheck 0. Compliance branch merged (List-Unsubscribe, /unsubscribe→bdr_suppression, Twilio signature validation, /privacy, /terms).
 - **ISC-21/22/46 (live, 2026-07-14)** — builder round-trip driven against the running server with the real Claude API: `/builder/start` → sessionId + opening question (<5s); two chat turns → `{done:true}` with campaign "BDRclaw - Solo Founder Pipeline Builder", 7 steps spanning send_email / linkedin_connect / linkedin_dm / send_sms. Advisor gate: 401 shadow-key failure diagnosed (shell env key outranked .env by design) — restart without shell key succeeded; `{error:"Internal error"}` surfaced to client while the real 401 stayed server-side (ISC-36 behaving under real failure).
 - **ISC-59 (email backstop, 2026-07-14)** — `assertNotSuppressed('email', to)` added to `sendBDREmail()`; email now has the same channel-level suppression chokepoint as sms/whatsapp/twitter/linkedin. Typecheck 0; channels+e2e 43/43.
+
+### 2026-07-15 (session resume) — booking detection + full-stack verification
+
+- **ISC-61..67 (landing, live)** — `curl https://bdrclaw.dev/` → 200 with correct title, 3-tier pricing, all 7 channels, 66 transition/reveal class hits; DNS records now exist (ISC-67 deferral lifted). WhatsApp copy fixed to warm-only and re-verified live post-push.
+- **ISC-68/69/77/78/79 (dashboard write paths, live)** — real-Chrome session: prospect drawer with touch timeline + stage dropdown ("Stage changes push to every connected CRM"), loop-start confirm modal ("will send real messages"), zero console errors on every page visited; curl round-trips: stage PATCH replied→restore with enum validation, loop start/stop with `/api/health` truth, suppression POST 201 + list.
+- **ISC-70** — pause covered by dashboard-write-api tests; activate→enroll→tick untested pending a real campaign (unblocks with the ISC-75 demo).
+- **ISC-71 [DEFERRED-VERIFY]** — GoHighLevel card + `GHL_API_KEY`/`GHL_LOCATION_ID` hint added to CRM Sync page, screenshot-verified; live pull requires Joseph's GHL creds.
+- **ISC-72/73 (GHL)** — 8/8 adapter tests (upsert+tag push, CRMContact pull mapping, ISC-27 non-throw, env-absent zero-fetch); synthetic-env probe: registered with env, absent without.
+- **ISC-80..84 (booking detection)** — calendly-webhook.test.ts 9/9: booking round-trip (stage + inbound touch), idempotent retry, unknown-invitee 200, non-booking event ignored, HMAC reject/accept, CSRF 403 cross-origin + same-origin/server-to-server pass, single-writer source walk, meeting-link-sender static probe. Localhost live probe: webhook booked the real Jordan Testwell row (`stage after webhook: meeting_booked`), restored after. Funnel renders "Link sent" (screenshot).
+- **Full suite** — 337 passed / 33 files (was 328/32 at session start); `tsc --noEmit` exit 0; pushed as 8ad67b8 + 552a9e9.
+- **Cato** — NOT run (Tailscale logged out, third consecutive session). This session's work is cross-vendor-unattested.

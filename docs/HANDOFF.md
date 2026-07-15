@@ -1,6 +1,30 @@
 # BDRclaw — Session Hand-off
 
-> **Last updated:** 2026-07-14 · **Branch:** `main` · **Head:** `896381c`
+> **Last updated:** 2026-07-15 (resume session) · **Branch:** `main` · **Head:** `552a9e9`
+
+## ✅ Done 2026-07-15 (resume session — booking detection + verification sweep)
+
+| Item | Detail |
+|------|--------|
+| **Booking detection is real now** | `meeting_booked` was being written at link-*send* — the flagship metric counted intentions. New stage `meeting_link_sent`; `POST /api/webhooks/calendly` (invitee.created, HMAC when `CALENDLY_WEBHOOK_SIGNING_KEY` set, idempotent on invitee URI) is the ONLY automated writer of `meeting_booked` — enforced by an executable source-walking test. Do NOT "fix" booking detection via reply classification (advisor-refuted: text intent ≠ booking). |
+| CSRF guard | Origin-mismatch → 403 on all POST/PATCH; origin-less (server-to-server) passes. **Dashboard still has NO auth — fine on 127.0.0.1, MUST ship auth with the Railway public deploy.** |
+| whatsapp_dm + instagram_dm handlers | Campaign builder listed both as valid action_types but no handlers existed → emitted steps silently no-oped. Both registered now, warm-only enforced in each channel's sendMessage. Landing WhatsApp copy made honest (warm-only). |
+| GoHighLevel visible in UI | CRM Sync page has a GHL card + `GHL_API_KEY`/`GHL_LOCATION_ID` hint; adapter 8/8 tests, registration probed both directions. |
+| bdrclaw.dev is LIVE | Joseph's DNS records landed — https://bdrclaw.dev serves the landing page (200, all sections). |
+| Verification sweep | Dashboard write paths live-verified in real Chrome (drawer, loop confirm modal, stage PATCH, suppression) — zero console errors. Old ISCs 9-12/25/27/39 closed with named test evidence. ISC-23 tombstoned (wrong assumption), ISC-25 reworded. |
+| Suite | **337/337**, typecheck 0, pushed (`8ad67b8`, `552a9e9`). Session work is **Cato-unattested** (Tailscale still logged out). |
+
+### 👉 Next actions (2026-07-15)
+1. **Railway deploy + auth** — deploy flips ISC-31/32/40 and gives Calendly a public webhook URL; **add dashboard auth in the same move** (no-auth is only safe on localhost).
+2. **Calendly webhook subscription** — after deploy: create webhook subscription for `invitee.created` → `https://<host>/api/webhooks/calendly`, set `CALENDLY_WEBHOOK_SIGNING_KEY`.
+3. **GHL live creds** — set `GHL_API_KEY` + `GHL_LOCATION_ID`, click "Pull from CRM" (flips ISC-71).
+4. **Builder live demo from browser UI** (flips ISC-75, then ISC-70/24 via activate).
+5. **ISC-74 (war-room perpetual loop)** — UNBUILT, not blocked. Joseph: still wanted?
+6. Carried from 07-14: LinkedIn live auth (ISC-57), Twitter creds, Twilio 10DLC, deliverability warmup.
+
+---
+
+## Previous session (2026-07-14)
 > Read this first when you come back. It's the "where did I leave off" file.
 > Full detail: `ISA.md` (build system-of-record), `docs/MVP-PLAN.md` (the plan), `docs/TWILIO-10DLC-SETUP.md` (SMS paperwork).
 
