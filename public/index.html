@@ -3,40 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BDRclaw</title>
+  <title>BDRclaw — Command Center</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } }</script>
+  <link rel="stylesheet" href="/styles.css" />
+  <script defer src="/app.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .gradient-text { background: linear-gradient(135deg, #f97316, #fb923c, #fdba74); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .chat-bubble-user { background: linear-gradient(135deg, #f97316, #fb923c); color: white; border-radius: 18px 18px 4px 18px; }
-    .chat-bubble-ai { background: #27272a; color: #e4e4e7; border-radius: 18px 18px 18px 4px; }
-    .sidebar-link { transition: background 0.15s ease, color 0.15s ease; }
-    .sidebar-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
-    .sidebar-link.active { background: rgba(249,115,22,0.15); color: #fb923c; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-    .kanban-col { min-height: 200px; }
-    .oration-panel { backdrop-filter: blur(20px); }
-  </style>
 </head>
-<body class="h-full font-sans bg-zinc-950 text-zinc-100" x-data="app()" x-init="init()" x-cloak>
+<body class="h-full font-sans bg-zinc-950 text-zinc-100" x-data="app()" x-init="init()" x-cloak
+      @keydown.escape.window="closeModals()">
 
-  <!-- Loading -->
-  <div x-show="loading" class="fixed inset-0 bg-zinc-950 flex items-center justify-center z-50">
-    <div class="text-center">
-      <div class="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-      <p class="text-zinc-500 text-sm">Loading your command center…</p>
-    </div>
+  <!-- Connection banner (honest degradation while the backend restarts) -->
+  <div x-show="apiDown" x-transition class="fixed top-0 inset-x-0 z-50 bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-center">
+    <span class="text-xs text-amber-300 font-medium">Reconnecting to BDRclaw… data shown may be stale.</span>
+  </div>
+
+  <!-- Toasts -->
+  <div class="fixed top-4 right-4 z-[60] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast-enter rounded-xl border px-4 py-3 text-sm shadow-2xl backdrop-blur bg-zinc-900/95"
+           :class="t.type==='error' ? 'border-red-500/40 text-red-300' : t.type==='success' ? 'border-emerald-500/40 text-emerald-300' : 'border-zinc-700 text-zinc-300'"
+           x-text="t.message"></div>
+    </template>
   </div>
 
   <!-- App shell -->
-  <div x-show="!loading" class="flex h-screen overflow-hidden">
+  <div class="flex h-screen overflow-hidden">
 
     <!-- ── Sidebar ── -->
     <nav class="w-60 bg-zinc-900 border-r border-zinc-800/60 flex flex-col shrink-0 select-none overflow-y-auto">
@@ -46,73 +42,71 @@
           <span class="text-white font-bold text-lg tracking-tight">BDRclaw</span>
         </div>
         <div class="flex items-center gap-1.5 mt-3">
-          <div class="w-1.5 h-1.5 rounded-full" :class="loopRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'"></div>
-          <span class="text-zinc-500 text-xs" x-text="loopRunning ? 'AI loop active' : 'Loop stopped'"></span>
+          <div class="w-1.5 h-1.5 rounded-full" :class="loop.running ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'"></div>
+          <span class="text-zinc-500 text-xs" x-text="loop.running ? 'Outreach loop active' : 'Loop stopped'"></span>
         </div>
       </div>
 
-      <!-- OUTREACH section -->
-      <div class="px-5 py-2 shrink-0">
-        <p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Outreach</p>
-      </div>
+      <div class="px-5 py-2 shrink-0"><p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Outreach</p></div>
       <div class="px-3 flex flex-col gap-0.5">
-        <button @click="navigate('dashboard')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='dashboard'?'active':''">
+        <button @click="navigate('overview')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='overview'?'active':''">
           <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          Dashboard
+          Overview
         </button>
-        <button @click="navigate('campaigns')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='campaigns'?'active':''">
-          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <button @click="navigate('prospects')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='prospects'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>
+          Prospects
+          <span x-show="stats.total_active > 0" class="ml-auto bg-zinc-800 text-zinc-400 text-xs rounded-full px-2 py-0.5 tabular" x-text="stats.total_active"></span>
+        </button>
+        <button @click="navigate('campaigns')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='campaigns'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           Campaigns
         </button>
-        <button @click="navigate('leads')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='leads'?'active':''">
-          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>
-          Leads
-          <span x-show="stats.total_active > 0" class="ml-auto bg-zinc-800 text-zinc-400 text-xs rounded-full px-2 py-0.5" x-text="stats.total_active"></span>
-        </button>
-        <button @click="navigate('builder')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='builder'?'active':''">
-          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          <span class="text-orange-400 font-medium">AI Builder</span>
+        <button @click="navigate('activity')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='activity'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Activity
         </button>
       </div>
 
-      <!-- WORKSPACE section -->
-      <div class="px-5 py-2 mt-2 shrink-0">
-        <p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Workspace</p>
-      </div>
+      <div class="px-5 py-2 mt-2 shrink-0"><p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Connections</p></div>
       <div class="px-3 flex flex-col gap-0.5">
-        <button @click="navigate('docs')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='docs'?'active':''">
-          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Docs &amp; Tasks
-        </button>
-        <button @click="navigate('meetings')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='meetings'?'active':''">
-          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-          Meetings
-        </button>
-      </div>
-
-      <!-- CONNECTIONS section -->
-      <div class="px-5 py-2 mt-2 shrink-0">
-        <p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Connections</p>
-      </div>
-      <div class="px-3 flex flex-col gap-0.5">
-        <button @click="navigate('channels')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='channels'?'active':''">
+        <button @click="navigate('channels')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='channels'?'active':''">
           <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
           Channels
-          <span class="ml-auto text-xs" :class="activeChannelCount>0?'text-emerald-400':'text-zinc-600'" x-text="activeChannelCount+'/'+Object.keys(channels).length"></span>
+          <span class="ml-auto text-xs tabular" :class="verifiedChannelCount>0?'text-emerald-400':'text-zinc-600'" x-text="verifiedChannelCount+'/'+channelList.length"></span>
         </button>
-        <button @click="navigate('crm')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='crm'?'active':''">
+        <button @click="navigate('crm')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='crm'?'active':''">
           <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
           CRM Sync
           <span x-show="crmAdapters.length>0" class="ml-auto text-xs text-emerald-400" x-text="crmAdapters.length+' active'"></span>
         </button>
-        <button @click="navigate('aiemail')" class="sidebar-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='aiemail'?'active':''">
+        <button @click="navigate('aiemail')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='aiemail'?'active':''">
           <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
           AI Email
         </button>
       </div>
 
-      <div class="mt-auto px-5 pb-5 shrink-0 flex flex-col gap-1.5">
-        <a href="https://bdrclaw.dev/docs" target="_blank" class="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Help &amp; Docs</a>
+      <div class="px-5 py-2 mt-2 shrink-0"><p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">Workspace</p></div>
+      <div class="px-3 flex flex-col gap-0.5">
+        <button @click="navigate('docs')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='docs'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Docs &amp; Tasks
+        </button>
+        <button @click="navigate('meetings')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='meetings'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          Meetings
+        </button>
+      </div>
+
+      <div class="px-5 py-2 mt-2 shrink-0"><p class="text-xs font-semibold text-zinc-600 uppercase tracking-widest">System</p></div>
+      <div class="px-3 flex flex-col gap-0.5">
+        <button @click="navigate('settings')" class="sidebar-link focus-ring w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400" :class="page==='settings'?'active':''">
+          <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </button>
+      </div>
+
+      <div class="mt-auto px-5 pb-5 pt-4 shrink-0 flex flex-col gap-1.5">
         <div class="flex gap-3 text-xs text-zinc-600">
           <a href="/privacy" class="hover:text-zinc-400 transition-colors">Privacy</a>
           <a href="/terms" class="hover:text-zinc-400 transition-colors">Terms</a>
@@ -122,184 +116,366 @@
     </nav>
 
     <!-- ── Main area ── -->
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0">
 
       <!-- Top bar -->
-      <header class="bg-zinc-900 border-b border-zinc-800/60 px-8 py-4 flex items-center justify-between shrink-0">
-        <div>
-          <h1 class="font-bold text-white text-lg" x-text="pageTitle()"></h1>
-          <p class="text-zinc-500 text-sm" x-text="pageSubtitle()"></p>
+      <header class="bg-zinc-900 border-b border-zinc-800/60 px-8 py-4 flex items-center justify-between gap-4 shrink-0">
+        <div class="min-w-0">
+          <h1 class="font-bold text-white text-lg truncate" x-text="pageTitle()"></h1>
+          <p class="text-zinc-500 text-sm truncate" x-text="pageSubtitle()"></p>
         </div>
-        <div class="flex items-center gap-3">
-          <button x-show="page==='dashboard'||page==='campaigns'" @click="navigate('builder')"
-            class="flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+        <div class="flex items-center gap-3 shrink-0">
+          <button x-show="page==='overview' || (page==='campaigns' && !builderOpen)" @click="navigate('campaigns'); openBuilder()"
+            class="focus-ring flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            Build Campaign with AI
+            Build campaign with AI
           </button>
-          <button x-show="page==='leads'" @click="showAddLead=true"
-            class="flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+          <button x-show="page==='campaigns' && builderOpen" @click="resetBuilder()"
+            class="focus-ring border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">New conversation</button>
+          <button x-show="page==='campaigns' && builderOpen" @click="closeBuilder()"
+            class="focus-ring border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Back to list</button>
+          <button x-show="page==='prospects'" @click="showImport=true; resetImport()"
+            class="focus-ring border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Import CSV</button>
+          <button x-show="page==='prospects'" @click="showAddLead=true"
+            class="focus-ring flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>
-            Add Lead
-          </button>
-          <button x-show="page==='builder'&&builderMessages.length>0" @click="resetBuilder()"
-            class="flex items-center gap-2 border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            New Campaign
+            Add prospect
           </button>
           <button x-show="page==='docs'&&docsTab==='notes'" @click="newNote()"
-            class="flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>
-            New Note
-          </button>
+            class="focus-ring flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">New note</button>
           <button x-show="page==='meetings'" @click="meetingTranscript='';meetingAnalysis=null"
-            class="flex items-center gap-2 border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Clear
-          </button>
+            class="focus-ring border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Clear</button>
         </div>
       </header>
 
       <!-- ── PAGES ── -->
-      <main class="flex-1 overflow-auto bg-zinc-950">
+      <main class="flex-1 overflow-y-auto overflow-x-hidden bg-zinc-950">
 
-        <!-- ── DASHBOARD ── -->
-        <div x-show="page==='dashboard'" class="p-8 max-w-6xl">
-          <div x-show="activeChannelCount===0" class="mb-6 bg-orange-500/8 border border-orange-500/20 rounded-xl p-5 flex items-start gap-4">
+        <!-- ══ OVERVIEW ══ -->
+        <div x-show="page==='overview'" class="p-8 max-w-6xl mx-auto">
+
+          <!-- Onboarding callout -->
+          <div x-show="channelsLoaded && configuredChannelCount===0" class="mb-6 bg-orange-500/[0.08] border border-orange-500/20 rounded-xl p-5 flex items-start gap-4">
             <div class="w-10 h-10 bg-orange-500/15 rounded-lg flex items-center justify-center shrink-0">
               <svg class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
             <div>
-              <p class="font-semibold text-white">Welcome to BDRclaw!</p>
-              <p class="text-zinc-400 text-sm mt-0.5">Connect your first outreach channel to start sending.</p>
+              <p class="font-semibold text-white">Welcome to BDRclaw</p>
+              <p class="text-zinc-400 text-sm mt-0.5">Connect your first outreach channel to start sending. Every channel ships with built-in safety caps.</p>
               <button @click="navigate('channels')" class="mt-2 text-sm font-medium text-orange-400 hover:text-orange-300 transition-colors">Set up channels →</button>
             </div>
           </div>
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+          <!-- KPI row -->
+          <div x-show="!statsLoaded" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <template x-for="i in 5" :key="i"><div class="skeleton h-[104px] rounded-xl"></div></template>
+          </div>
+          <div x-show="statsLoaded" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             <div class="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <p class="text-sm text-zinc-500">Active Leads</p>
-              <p class="text-3xl font-bold text-white mt-1" x-text="stats.total_active??0"></p>
-              <p class="text-xs text-zinc-600 mt-1">in pipeline</p>
+              <p class="text-sm text-zinc-500">Pipeline prospects</p>
+              <p class="text-3xl font-bold text-white mt-1" x-text="stats.total_active ?? 0"></p>
+              <p class="text-xs text-zinc-600 mt-1">in active stages</p>
             </div>
             <div class="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <p class="text-sm text-zinc-500">Campaigns Running</p>
-              <p class="text-3xl font-bold text-white mt-1" x-text="campaigns.filter(c=>c.status==='active').length"></p>
-              <p class="text-xs text-zinc-600 mt-1">of <span x-text="campaigns.length"></span> total</p>
+              <p class="text-sm text-zinc-500">Sends today</p>
+              <p class="text-3xl font-bold text-white mt-1" x-text="sendsToday"></p>
+              <div class="mt-1" x-html="sparklineSvg()"></div>
+              <p x-show="!sparklineSvg()" class="text-xs text-zinc-600 mt-1">across all channels</p>
             </div>
             <div class="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <p class="text-sm text-zinc-500">Messages Today</p>
-              <p class="text-3xl font-bold text-white mt-1" x-text="(stats.today?.emails_sent??0)+(stats.today?.linkedin_connects??0)+(stats.today?.sms_sent??0)"></p>
-              <p class="text-xs text-zinc-600 mt-1"><span x-text="stats.today?.replies_received??0"></span> replies</p>
+              <p class="text-sm text-zinc-500">Replies today</p>
+              <p class="text-3xl font-bold text-white mt-1" x-text="stats.today?.replies_received ?? 0"></p>
+              <p class="text-xs text-zinc-600 mt-1">inbound responses</p>
             </div>
             <div class="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <p class="text-sm text-zinc-500">Hot Leads</p>
-              <p class="text-3xl font-bold mt-1 gradient-text" x-text="stats.hot_leads??0"></p>
-              <p class="text-xs text-zinc-600 mt-1"><span x-text="stats.meetings_booked_total??0"></span> meetings booked</p>
+              <p class="text-sm text-zinc-500">Hot leads</p>
+              <p class="text-3xl font-bold mt-1 gradient-text" x-text="stats.hot_leads ?? 0"></p>
+              <p class="text-xs text-zinc-600 mt-1">replied with interest</p>
+            </div>
+            <div class="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
+              <p class="text-sm text-zinc-500">Meetings booked</p>
+              <p class="text-3xl font-bold text-emerald-400 mt-1" x-text="stats.meetings_booked_total ?? 0"></p>
+              <p class="text-xs text-zinc-600 mt-1">all time</p>
             </div>
           </div>
+
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 bg-zinc-900 rounded-xl border border-zinc-800">
-              <div class="px-5 py-4 border-b border-zinc-800"><h2 class="font-semibold text-white">Recent Activity</h2></div>
-              <div x-show="activity.length===0" class="px-5 py-8 text-center text-zinc-600 text-sm">No activity yet. Send your first message to get started.</div>
-              <div class="divide-y divide-zinc-800/60">
-                <template x-for="item in activity.slice(0,8)" :key="item.id">
-                  <div class="px-5 py-3 flex items-start gap-3">
-                    <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-white text-xs font-bold"
-                      :class="item.type==='hot_lead'?'bg-orange-500':item.type==='replied'?'bg-blue-500':item.type==='blocked'?'bg-red-500/70':'bg-zinc-700'">
-                      <span x-text="item.prospect_name.substring(0,1)"></span>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm text-zinc-200"><span class="font-medium" x-text="item.prospect_name"></span><span class="text-zinc-500"> · <span x-text="item.prospect_company"></span></span></p>
-                      <p class="text-xs text-zinc-500 mt-0.5"><span x-text="activityLabel(item)"></span> · <span class="capitalize" x-text="item.channel"></span> · <span x-text="timeAgo(item.sent_at)"></span></p>
-                    </div>
-                    <span x-show="item.type==='hot_lead'" class="text-xs bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full font-medium shrink-0">🔥 Hot</span>
+            <div class="lg:col-span-2 flex flex-col gap-6">
+
+              <!-- Pipeline funnel -->
+              <div class="bg-zinc-900 rounded-xl border border-zinc-800">
+                <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h2 class="font-semibold text-white">Pipeline funnel</h2>
+                  <span class="text-xs text-zinc-600" x-text="funnelTotal + ' prospects'"></span>
+                </div>
+                <div class="p-5">
+                  <div x-show="!statsLoaded" class="skeleton h-48"></div>
+                  <div x-show="statsLoaded && funnelTotal===0" class="py-10 text-center">
+                    <p class="text-zinc-500 text-sm">No prospects in the pipeline yet.</p>
+                    <button @click="navigate('prospects'); showAddLead=true" class="mt-3 text-sm font-medium text-orange-400 hover:text-orange-300 transition-colors">Add your first prospect →</button>
                   </div>
-                </template>
+                  <div x-show="statsLoaded && funnelTotal>0" x-html="funnelSvg()"></div>
+                </div>
+              </div>
+
+              <!-- Recent activity preview -->
+              <div class="bg-zinc-900 rounded-xl border border-zinc-800">
+                <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h2 class="font-semibold text-white">Recent activity</h2>
+                  <button @click="navigate('activity')" class="text-xs text-orange-400 hover:text-orange-300 font-medium transition-colors">View all →</button>
+                </div>
+                <div x-show="!activityLoaded" class="p-5 space-y-3">
+                  <template x-for="i in 4" :key="i"><div class="skeleton h-10"></div></template>
+                </div>
+                <div x-show="activityLoaded && activity.length===0" class="px-5 py-10 text-center">
+                  <p class="text-zinc-500 text-sm">No activity yet. Activate a campaign to start the first touches.</p>
+                  <button @click="navigate('campaigns')" class="mt-3 text-sm font-medium text-orange-400 hover:text-orange-300 transition-colors">Go to campaigns →</button>
+                </div>
+                <div class="divide-y divide-zinc-800/60">
+                  <template x-for="item in activity.slice(0,8)" :key="item.id">
+                    <div class="px-5 py-3 flex items-start gap-3">
+                      <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-white text-xs font-bold"
+                        :class="item.type==='hot_lead'?'bg-orange-500':item.type==='replied'?'bg-blue-500':item.type==='blocked'?'bg-red-500/70':'bg-zinc-700'">
+                        <span x-text="(item.prospect_name||'?').substring(0,1)"></span>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm text-zinc-200 truncate"><span class="font-medium" x-text="item.prospect_name"></span><span class="text-zinc-500"> · <span x-text="item.prospect_company"></span></span></p>
+                        <p class="text-xs text-zinc-500 mt-0.5 truncate"><span x-text="activityLabel(item)"></span> · <span class="capitalize" x-text="item.channel"></span> · <span x-text="timeAgo(item.sent_at)"></span></p>
+                      </div>
+                      <span x-show="item.type==='hot_lead'" class="text-xs bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full font-medium shrink-0">Hot</span>
+                    </div>
+                  </template>
+                </div>
               </div>
             </div>
-            <div class="bg-zinc-900 rounded-xl border border-zinc-800">
-              <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-                <h2 class="font-semibold text-white">Hot Leads</h2>
-                <span class="text-xs text-zinc-600" x-text="hotLeads.length+' leads'"></span>
-              </div>
-              <div x-show="hotLeads.length===0" class="px-5 py-8 text-center text-zinc-600 text-sm">Hot leads appear here when prospects reply with interest.</div>
-              <div class="divide-y divide-zinc-800/60">
-                <template x-for="p in hotLeads" :key="p.id">
-                  <div class="px-4 py-3">
-                    <p class="font-medium text-zinc-200 text-sm" x-text="p.name"></p>
-                    <p class="text-xs text-zinc-500" x-text="p.title+' · '+p.company"></p>
-                    <span class="mt-1.5 inline-block text-xs bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full font-medium" x-text="stageLabel(p.stage)"></span>
+
+            <div class="flex flex-col gap-6">
+
+              <!-- Autopilot status (honest) -->
+              <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-5">
+                <div class="flex items-center gap-2 mb-2">
+                  <div class="w-2 h-2 rounded-full" :class="loop.running ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'"></div>
+                  <h2 class="font-semibold text-white text-sm">Autopilot</h2>
+                </div>
+                <p x-show="loop.running" class="text-sm text-zinc-400">The outreach loop is running<span x-show="loop.tickCount"> — <span class="tabular" x-text="loop.tickCount"></span> ticks this session</span>.</p>
+                <p x-show="!loop.running" class="text-sm text-zinc-400">The autonomous outreach loop is currently stopped. Campaigns will not send until it starts — start the BDRclaw daemon to resume.</p>
+                <div x-show="stats.brain_last_run" class="mt-4 pt-4 border-t border-zinc-800">
+                  <p class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Last brain run</p>
+                  <p class="text-xs text-zinc-500" x-text="stats.brain_last_run ? (timeAgo(stats.brain_last_run.run_at) + ' · ' + stats.brain_last_run.status) : ''"></p>
+                  <div class="flex gap-5 mt-2">
+                    <div><p class="text-lg font-bold text-white tabular" x-text="stats.brain_last_run?.prospects_reviewed ?? 0"></p><p class="text-[11px] text-zinc-600 uppercase">Reviewed</p></div>
+                    <div><p class="text-lg font-bold text-white tabular" x-text="stats.brain_last_run?.actions_queued ?? 0"></p><p class="text-[11px] text-zinc-600 uppercase">Queued</p></div>
+                    <div><p class="text-lg font-bold text-orange-400 tabular" x-text="stats.brain_last_run?.hot_leads_found ?? 0"></p><p class="text-[11px] text-zinc-600 uppercase">Hot</p></div>
                   </div>
-                </template>
+                </div>
+              </div>
+
+              <!-- Hot leads -->
+              <div class="bg-zinc-900 rounded-xl border border-zinc-800">
+                <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h2 class="font-semibold text-white">Hot leads</h2>
+                  <span class="text-xs text-zinc-600" x-text="hotLeads.length + ' lead' + (hotLeads.length===1?'':'s')"></span>
+                </div>
+                <div x-show="hotLeads.length===0" class="px-5 py-8 text-center text-zinc-600 text-sm">Hot leads appear here when prospects reply with interest.</div>
+                <div class="divide-y divide-zinc-800/60 max-h-96 overflow-y-auto">
+                  <template x-for="p in hotLeads" :key="p.id">
+                    <div class="px-4 py-3">
+                      <p class="font-medium text-zinc-200 text-sm" x-text="p.name"></p>
+                      <p class="text-xs text-zinc-500 truncate" x-text="(p.title||'') + ' · ' + (p.company||'')"></p>
+                      <span class="mt-1.5 inline-block text-xs px-2 py-0.5 rounded-full font-medium border" :class="stageColor(p.stage)" x-text="stageLabel(p.stage)"></span>
+                    </div>
+                  </template>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ── CAMPAIGNS ── -->
-        <div x-show="page==='campaigns'" class="p-8 max-w-5xl">
-          <div x-show="campaigns.length===0" class="text-center py-20">
+        <!-- ══ PROSPECTS ══ -->
+        <div x-show="page==='prospects'" class="p-8 max-w-6xl mx-auto">
+          <div class="flex flex-wrap gap-3 mb-6">
+            <input x-model="prospectSearch" @input.debounce.400ms="loadProspects()" type="text" placeholder="Search prospects…"
+              class="focus-ring flex-1 min-w-56 bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+            <select x-model="prospectStageFilter" @change="loadProspects()"
+              class="focus-ring bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40">
+              <option value="">All stages</option>
+              <option value="identified">New</option>
+              <option value="outreach_sent">Contacted</option>
+              <option value="follow_up">Follow-up</option>
+              <option value="replied">Replied</option>
+              <option value="interested">Hot lead</option>
+              <option value="meeting_booked">Meeting set</option>
+              <option value="handed_off">Handed off</option>
+              <option value="not_interested">Not interested</option>
+              <option value="unsubscribed">Unsubscribed</option>
+            </select>
+          </div>
+
+          <!-- Skeleton -->
+          <div x-show="!prospectsLoaded" class="space-y-2">
+            <template x-for="i in 6" :key="i"><div class="skeleton h-14 rounded-xl"></div></template>
+          </div>
+
+          <!-- Empty states -->
+          <div x-show="prospectsLoaded && prospects.length===0 && !prospectSearch && !prospectStageFilter" class="text-center py-20">
+            <div class="w-16 h-16 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+            </div>
+            <h2 class="text-xl font-bold text-white">No prospects yet</h2>
+            <p class="text-zinc-500 mt-2 max-w-sm mx-auto">Add prospects one at a time, or import a CSV with name, company, and title columns.</p>
+            <div class="flex items-center justify-center gap-3 mt-5">
+              <button @click="showImport=true; resetImport()" class="border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors">Import CSV</button>
+              <button @click="showAddLead=true" class="bg-orange-500 hover:bg-orange-400 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">Add prospect</button>
+            </div>
+          </div>
+          <div x-show="prospectsLoaded && prospects.length===0 && (prospectSearch || prospectStageFilter)" class="text-center py-16 text-zinc-500 text-sm">
+            No prospects match this filter.
+            <button @click="prospectSearch=''; prospectStageFilter=''; loadProspects()" class="block mx-auto mt-2 text-orange-400 hover:text-orange-300 font-medium transition-colors">Clear filters</button>
+          </div>
+
+          <!-- Table -->
+          <div x-show="prospectsLoaded && prospects.length>0" class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-zinc-800 text-left">
+                    <th class="px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Prospect</th>
+                    <th class="px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Company</th>
+                    <th class="px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Stage</th>
+                    <th class="px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Reach</th>
+                    <th class="px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Added</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800/60">
+                  <template x-for="p in prospects" :key="p.id">
+                    <tr class="hover:bg-zinc-800/30 transition-colors">
+                      <td class="px-5 py-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                          <div class="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-semibold text-xs shrink-0" x-text="(p.name||'?').substring(0,1)"></div>
+                          <div class="min-w-0">
+                            <p class="font-medium text-zinc-200 truncate" x-text="p.name"></p>
+                            <p class="text-xs text-zinc-500 truncate" x-text="p.title"></p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-5 py-3 text-zinc-400" x-text="p.company"></td>
+                      <td class="px-5 py-3"><span class="text-xs px-2.5 py-1 rounded-full font-medium border whitespace-nowrap" :class="stageColor(p.stage)" x-text="stageLabel(p.stage)"></span></td>
+                      <td class="px-5 py-3">
+                        <div class="flex gap-1.5 text-zinc-600">
+                          <span x-show="p.email" title="Has email" class="text-zinc-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></span>
+                          <span x-show="p.linkedin_url" title="Has LinkedIn" class="text-zinc-400"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7 9H5v10h2V9zM6 7.5A1.25 1.25 0 106 5a1.25 1.25 0 000 2.5zM19 19h-2v-5c0-1.2-.5-2-1.6-2-.9 0-1.4.6-1.6 1.2-.1.2-.1.5-.1.8V19h-2V9h2v1.4c.3-.5 1-1.4 2.5-1.4 1.8 0 3 1.2 3 3.8V19z"/></svg></span>
+                          <span x-show="p.phone" title="Has phone" class="text-zinc-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg></span>
+                          <span x-show="!p.email && !p.linkedin_url && !p.phone" class="text-xs text-zinc-700">no contact info</span>
+                        </div>
+                      </td>
+                      <td class="px-5 py-3 text-xs text-zinc-500 whitespace-nowrap" x-text="timeAgo(p.created_at)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Import history -->
+          <div x-show="importsLoaded && imports.length>0" class="mt-8">
+            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Import history</h2>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800/60">
+              <template x-for="job in imports" :key="job.id">
+                <div class="px-5 py-3 flex items-center gap-4">
+                  <svg class="w-4 h-4 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-zinc-300 truncate" x-text="job.filename"></p>
+                    <p class="text-xs text-zinc-600" x-text="(job.imported_rows ?? 0) + ' of ' + (job.total_rows ?? 0) + ' rows imported · ' + timeAgo(job.created_at)"></p>
+                  </div>
+                  <span class="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0"
+                    :class="job.status==='completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : job.status==='error' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                    x-text="job.status"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ CAMPAIGNS ══ -->
+        <div x-show="page==='campaigns' && !builderOpen" class="p-8 max-w-5xl mx-auto">
+          <div x-show="!campaignsLoaded" class="space-y-4">
+            <template x-for="i in 3" :key="i"><div class="skeleton h-24 rounded-xl"></div></template>
+          </div>
+
+          <div x-show="campaignsLoaded && campaigns.length===0" class="text-center py-20">
             <div class="w-16 h-16 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <svg class="w-8 h-8 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
             <h2 class="text-xl font-bold text-white">Build your first campaign</h2>
-            <p class="text-zinc-500 mt-2 max-w-sm mx-auto">Just talk to the AI builder.</p>
-            <button @click="navigate('builder')" class="mt-5 bg-orange-500 hover:bg-orange-400 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors">Start with AI Builder →</button>
+            <p class="text-zinc-500 mt-2 max-w-sm mx-auto">Describe what you sell and who you target — BDR Claude designs the whole multi-channel sequence in a short conversation.</p>
+            <button @click="openBuilder()" class="mt-5 bg-orange-500 hover:bg-orange-400 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors">Start with the AI builder →</button>
           </div>
-          <div x-show="campaigns.length>0" class="grid gap-4">
+
+          <div x-show="campaignsLoaded && campaigns.length>0" class="grid gap-4">
             <template x-for="c in campaigns" :key="c.id">
-              <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-5 flex items-center gap-5">
-                <div class="flex-1">
-                  <div class="flex items-center gap-3 mb-1">
-                    <h3 class="font-semibold text-white" x-text="c.name"></h3>
-                    <span class="text-xs px-2 py-0.5 rounded-full font-medium border"
-                      :class="c.status==='active'?'bg-emerald-500/10 text-emerald-400 border-emerald-500/20':c.status==='paused'?'bg-amber-500/10 text-amber-400 border-amber-500/20':'bg-zinc-800 text-zinc-400 border-zinc-700'"
-                      x-text="c.status.charAt(0).toUpperCase()+c.status.slice(1)"></span>
+              <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+                <div class="p-5 flex items-center gap-5 flex-wrap">
+                  <div class="flex-1 min-w-56">
+                    <div class="flex items-center gap-3 mb-1 flex-wrap">
+                      <h3 class="font-semibold text-white" x-text="c.name"></h3>
+                      <span class="text-xs px-2 py-0.5 rounded-full font-medium border capitalize" :class="campaignStatusColor(c.status)" x-text="c.status"></span>
+                      <span x-show="c.tone" class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 capitalize" x-text="c.tone"></span>
+                    </div>
+                    <p class="text-sm text-zinc-500 truncate" x-text="c.value_proposition || c.description || 'No description'"></p>
+                    <p x-show="c.icp_description" class="text-xs text-zinc-600 mt-1 truncate">ICP: <span x-text="c.icp_description"></span></p>
                   </div>
-                  <p class="text-sm text-zinc-500" x-text="c.value_proposition??'No description'"></p>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button @click="toggleCampaignDetail(c.id)"
+                      class="text-xs border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      x-text="expandedCampaignId===c.id ? 'Hide sequence' : 'View sequence'"></button>
+                    <button x-show="c.status!=='active'" @click="setCampaignStatus(c.id,'active')" :disabled="campaignBusy===c.id"
+                      class="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      x-text="campaignBusy===c.id ? 'Working…' : 'Activate'"></button>
+                    <button x-show="c.status==='active'" @click="setCampaignStatus(c.id,'paused')" :disabled="campaignBusy===c.id"
+                      class="text-xs bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      x-text="campaignBusy===c.id ? 'Working…' : 'Pause'"></button>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <button x-show="c.status!=='active'" @click="activateCampaign(c.id)" class="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors">Activate</button>
-                  <button x-show="c.status==='active'" @click="pauseCampaign(c.id)" class="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors">Pause</button>
+                <!-- Sequence detail -->
+                <div x-show="expandedCampaignId===c.id" class="border-t border-zinc-800 bg-zinc-950/50 px-5 py-4">
+                  <div x-show="!campaignSteps[c.id]" class="skeleton h-16"></div>
+                  <div x-show="campaignSteps[c.id] && campaignSteps[c.id].length===0" class="text-sm text-zinc-600 py-2">This campaign has no steps yet.</div>
+                  <div x-show="campaignSteps[c.id] && campaignSteps[c.id].length>0">
+                    <div class="flex items-center gap-2 mb-3">
+                      <span class="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Channels:</span>
+                      <template x-for="ch in campaignChannels(c.id)" :key="ch">
+                        <span class="w-6 h-6 inline-flex" x-html="logo(ch)"></span>
+                      </template>
+                    </div>
+                    <div class="space-y-2">
+                      <template x-for="s in campaignSteps[c.id]" :key="s.id">
+                        <div class="flex items-start gap-3">
+                          <div class="w-6 h-6 rounded-full bg-orange-500/15 border border-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" x-text="s.step_number"></div>
+                          <div class="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                            <div class="flex items-center gap-2 flex-wrap">
+                              <span class="text-sm font-medium text-zinc-200" x-text="actionLabel(s.action_type)"></span>
+                              <span class="text-xs text-zinc-600" x-text="s.delay_days>0 ? '+' + s.delay_days + ' day' + (s.delay_days===1?'':'s') : 'immediately'"></span>
+                              <span x-show="s.condition && s.condition!=='always'" class="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700" x-text="'if ' + String(s.condition).replace('_',' ')"></span>
+                            </div>
+                            <p x-show="s.subject" class="text-xs text-zinc-400 mt-1 truncate">Subject: <span x-text="s.subject"></span></p>
+                            <p x-show="s.template" class="text-xs text-zinc-600 mt-0.5 line-clamp-2" x-text="s.template"></p>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
                 </div>
               </div>
             </template>
           </div>
         </div>
 
-        <!-- ── LEADS ── -->
-        <div x-show="page==='leads'" class="p-8 max-w-5xl">
-          <div class="flex gap-3 mb-6">
-            <input x-model="prospectSearch" @input.debounce.400ms="loadLeads()" type="text" placeholder="Search leads…"
-              class="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
-            <select x-model="prospectStageFilter" @change="loadLeads()"
-              class="bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40">
-              <option value="">All stages</option>
-              <option value="identified">New</option>
-              <option value="outreach_sent">Contacted</option>
-              <option value="replied">Replied</option>
-              <option value="interested">Interested</option>
-              <option value="meeting_booked">Meeting Set</option>
-            </select>
-          </div>
-          <div x-show="prospects.length===0" class="text-center py-20 text-zinc-600 text-sm">No leads yet. Add your first lead or import a CSV.</div>
-          <div class="grid gap-2">
-            <template x-for="p in prospects" :key="p.id">
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-3.5 flex items-center gap-4">
-                <div class="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-semibold text-sm shrink-0" x-text="p.name.substring(0,1)"></div>
-                <div class="flex-1 min-w-0">
-                  <p class="font-medium text-zinc-200 text-sm" x-text="p.name"></p>
-                  <p class="text-xs text-zinc-500" x-text="p.title+' · '+p.company"></p>
-                </div>
-                <span class="text-xs px-2.5 py-1 rounded-full font-medium border" :class="stageColor(p.stage)" x-text="stageLabel(p.stage)"></span>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- ── AI BUILDER ── -->
-        <div x-show="page==='builder'" class="flex flex-col h-full">
-          <div id="chat-messages" class="flex-1 overflow-auto p-8 space-y-4 max-w-3xl mx-auto w-full">
+        <!-- ══ CAMPAIGN BUILDER (inside Campaigns) ══ -->
+        <div x-show="page==='campaigns' && builderOpen" class="flex flex-col h-full">
+          <div id="chat-messages" class="flex-1 overflow-y-auto p-8 space-y-4 max-w-3xl mx-auto w-full">
             <template x-for="(msg, i) in builderMessages" :key="i">
               <div class="flex" :class="msg.role==='user'?'justify-end':''">
-                <div class="max-w-xl px-5 py-3.5 text-sm leading-relaxed" :class="msg.role==='user'?'chat-bubble-user':'chat-bubble-ai'" x-text="msg.content"></div>
+                <div class="max-w-xl px-5 py-3.5 text-sm leading-relaxed whitespace-pre-wrap" :class="msg.role==='user'?'chat-bubble-user':'chat-bubble-ai'" x-text="msg.content"></div>
               </div>
             </template>
             <div x-show="builderLoading" class="flex">
@@ -309,303 +485,250 @@
                 <div class="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style="animation-delay:.3s"></div>
               </div>
             </div>
-            <div x-show="builtCampaign" class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm text-emerald-300">
-              ✅ Campaign "<span x-text="builtCampaign?.name"></span>" built and saved. <button @click="navigate('campaigns')" class="underline">View campaigns →</button>
+
+            <!-- Built campaign card -->
+            <div x-show="builtCampaign" class="bg-zinc-900 border border-emerald-500/30 rounded-xl overflow-hidden">
+              <div class="px-5 py-4 border-b border-zinc-800 bg-emerald-500/5 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p class="text-xs text-emerald-400 font-semibold uppercase tracking-widest mb-1">Campaign built &amp; saved</p>
+                  <h3 class="font-bold text-white" x-text="builtCampaign?.name"></h3>
+                </div>
+                <div class="flex gap-2">
+                  <button @click="closeBuilder()" class="text-xs border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-3 py-1.5 rounded-lg font-medium transition-colors">View in list</button>
+                  <button @click="setCampaignStatus(builtCampaign.id,'active'); closeBuilder()" class="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors">Activate now</button>
+                </div>
+              </div>
+              <div class="p-5">
+                <p x-show="builtCampaign?.value_proposition" class="text-sm text-zinc-400 mb-1" x-text="builtCampaign?.value_proposition"></p>
+                <p x-show="builtCampaign?.icp_description" class="text-xs text-zinc-600 mb-4">ICP: <span x-text="builtCampaign?.icp_description"></span></p>
+                <div class="space-y-2">
+                  <template x-for="s in (builtCampaign?.steps ?? [])" :key="s.step_number">
+                    <div class="flex items-start gap-3">
+                      <div class="w-6 h-6 rounded-full bg-orange-500/15 border border-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" x-text="s.step_number"></div>
+                      <div class="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-sm font-medium text-zinc-200" x-text="actionLabel(s.action_type)"></span>
+                          <span class="text-xs text-zinc-600" x-text="s.delay_days>0 ? '+' + s.delay_days + ' day' + (s.delay_days===1?'':'s') : 'immediately'"></span>
+                          <span x-show="s.condition && s.condition!=='always'" class="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700" x-text="'if ' + String(s.condition).replace('_',' ')"></span>
+                        </div>
+                        <p x-show="s.subject" class="text-xs text-zinc-400 mt-1 truncate">Subject: <span x-text="s.subject"></span></p>
+                        <p x-show="s.template" class="text-xs text-zinc-600 mt-0.5 line-clamp-2" x-text="s.template"></p>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="border-t border-zinc-800 bg-zinc-900 p-4">
+          <div class="border-t border-zinc-800 bg-zinc-900 p-4 shrink-0">
             <div class="max-w-3xl mx-auto flex gap-3">
-              <input x-model="builderInput" @keydown.enter="sendBuilderMessage()" type="text" placeholder="Tell BDR Claude what you sell and who you target…"
-                class="flex-1 bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+              <input id="builder-input" x-model="builderInput" @keydown.enter="sendBuilderMessage()" type="text" placeholder="Tell BDR Claude what you sell and who you target…"
+                class="focus-ring flex-1 bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
               <button @click="sendBuilderMessage()" :disabled="!builderInput.trim()||builderLoading"
                 class="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white px-5 py-3 rounded-xl font-semibold text-sm transition-colors">Send</button>
             </div>
           </div>
         </div>
 
-        <!-- ── DOCS ── -->
-        <div x-show="page==='docs'" class="flex h-full">
-          <!-- Tabs -->
-          <div class="flex-1 flex flex-col overflow-hidden">
-            <div class="flex border-b border-zinc-800 bg-zinc-900 px-6 gap-6 shrink-0">
-              <button @click="docsTab='notes'" class="py-3.5 text-sm font-medium border-b-2 transition-colors" :class="docsTab==='notes'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Notes</button>
-              <button @click="docsTab='tasks'" class="py-3.5 text-sm font-medium border-b-2 transition-colors" :class="docsTab==='tasks'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Task Board</button>
+        <!-- ══ CHANNELS ══ -->
+        <div x-show="page==='channels'" class="p-8 max-w-5xl mx-auto">
+          <div class="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-start gap-4">
+            <div class="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center shrink-0">
+              <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             </div>
+            <div>
+              <p class="font-semibold text-white text-sm">Built-in account protection</p>
+              <p class="text-zinc-400 text-sm mt-0.5">Every channel enforces conservative daily caps and compliance rules by design — LinkedIn invite limits, TCPA touch limits on SMS, warm-reply-only DMs. Your accounts stay safe even on full autopilot.</p>
+            </div>
+          </div>
 
-            <!-- NOTES TAB -->
-            <div x-show="docsTab==='notes'" class="flex flex-1 overflow-hidden">
-              <!-- Note list sidebar -->
-              <div class="w-56 bg-zinc-900 border-r border-zinc-800 overflow-y-auto flex flex-col">
-                <div class="p-3">
-                  <button @click="newNote()" class="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 rounded-lg px-3 py-2 text-xs font-semibold transition-colors">+ New Note</button>
-                </div>
-                <div class="flex-1 overflow-y-auto">
-                  <template x-for="n in notes" :key="n.id">
-                    <button @click="selectNote(n.id)" class="w-full text-left px-4 py-3 border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors" :class="currentNoteId===n.id?'bg-orange-500/8 border-l-2 border-l-orange-500':''">
-                      <p class="text-sm font-medium text-zinc-200 truncate" x-text="n.title||'Untitled'"></p>
-                      <p class="text-xs text-zinc-600 mt-0.5" x-text="n.preview||'Empty note'"></p>
-                    </button>
-                  </template>
-                  <div x-show="notes.length===0" class="px-4 py-8 text-center text-zinc-600 text-xs">No notes yet.</div>
-                </div>
-              </div>
-              <!-- Editor -->
-              <div class="flex-1 flex flex-col overflow-hidden">
-                <div x-show="!currentNoteId" class="flex-1 flex items-center justify-center text-zinc-700 text-sm">Select or create a note</div>
-                <div x-show="currentNoteId" class="flex-1 flex flex-col overflow-hidden">
-                  <div class="px-6 py-4 border-b border-zinc-800 flex items-center gap-3">
-                    <input x-model="currentNoteTitle" @input="saveCurrentNote()" type="text" placeholder="Note title"
-                      class="flex-1 bg-transparent text-white font-semibold text-lg border-none outline-none placeholder-zinc-700" />
-                    <button @click="deleteCurrentNote()" class="text-zinc-600 hover:text-red-400 transition-colors text-xs">Delete</button>
-                  </div>
-                  <textarea x-model="currentNoteContent" @input="saveCurrentNote()" placeholder="Start writing… supports plain text, bullet lists, quick thoughts."
-                    class="flex-1 bg-transparent text-zinc-300 text-sm leading-relaxed px-6 py-4 resize-none outline-none placeholder-zinc-700 font-mono"></textarea>
-                </div>
-              </div>
-            </div>
+          <div x-show="!channelsLoaded" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="i in 6" :key="i"><div class="skeleton h-36 rounded-xl"></div></template>
+          </div>
 
-            <!-- TASKS TAB (Kanban) -->
-            <div x-show="docsTab==='tasks'" class="flex-1 overflow-auto p-6">
-              <!-- Add task input -->
-              <div class="flex gap-3 mb-6">
-                <input x-model="newTaskText" @keydown.enter="addTask('todo')" type="text" placeholder="New task… press Enter to add to To Do"
-                  class="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
-                <select x-model="newTaskCol" class="bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg px-3 py-2.5 text-sm">
-                  <option value="todo">To Do</option>
-                  <option value="inProgress">In Progress</option>
-                  <option value="done">Done</option>
-                </select>
-                <button @click="addTask(newTaskCol)" class="bg-orange-500 hover:bg-orange-400 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">Add</button>
-              </div>
-              <!-- Columns -->
-              <div class="grid grid-cols-3 gap-4">
-                <!-- To Do -->
-                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-                    <span class="font-semibold text-zinc-300 text-sm">To Do</span>
-                    <span class="text-xs text-zinc-600" x-text="tasks.todo.length"></span>
+          <div x-show="channelsLoaded" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="c in channelList" :key="c.channel">
+              <div class="bg-zinc-900 border rounded-xl p-5" :class="c.verified===true ? 'border-emerald-800/40' : 'border-zinc-800'">
+                <div class="flex items-start gap-4">
+                  <div class="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" :style="'background:' + channelColor(c.channel) + '22'">
+                    <span x-html="logo(c.channel)"></span>
                   </div>
-                  <div class="p-3 space-y-2 kanban-col">
-                    <template x-for="t in tasks.todo" :key="t.id">
-                      <div class="bg-zinc-800 rounded-lg p-3 group">
-                        <p class="text-sm text-zinc-200" x-text="t.text"></p>
-                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button @click="moveTask(t.id,'todo','inProgress')" class="text-xs text-zinc-500 hover:text-orange-400 transition-colors">→ In Progress</button>
-                          <button @click="deleteTask(t.id,'todo')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
-                        </div>
-                      </div>
-                    </template>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <p class="font-semibold text-zinc-200" x-text="channelLabel(c.channel)"></p>
+                      <span x-show="c.configured" class="text-xs px-1.5 py-0.5 rounded-full border"
+                        :class="c.verified===true ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'">Configured</span>
+                      <span x-show="c.verified===true" class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">Verified</span>
+                    </div>
+                    <p class="text-xs text-zinc-500 mt-0.5" x-text="channelStatusText(c)"></p>
+                    <p x-show="c.account" class="text-xs text-zinc-600 mt-0.5 truncate" x-text="c.account"></p>
                   </div>
+                  <button @click="setupKey=c.channel" class="text-xs border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0"
+                    x-text="c.configured ? 'Settings' : 'Set up'"></button>
                 </div>
-                <!-- In Progress -->
-                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-                    <span class="font-semibold text-zinc-300 text-sm">In Progress</span>
-                    <span class="text-xs text-amber-400" x-text="tasks.inProgress.length"></span>
+
+                <!-- Daily-limit meter -->
+                <div x-show="typeof c.dailyLimit === 'number' && c.dailyLimit > 0" class="mt-4">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs text-zinc-500">Daily sends</span>
+                    <span class="text-xs text-zinc-400 tabular"><span x-text="c.usedToday ?? 0"></span> / <span x-text="c.dailyLimit"></span></span>
                   </div>
-                  <div class="p-3 space-y-2 kanban-col">
-                    <template x-for="t in tasks.inProgress" :key="t.id">
-                      <div class="bg-zinc-800 border-l-2 border-amber-500/50 rounded-lg p-3 group">
-                        <p class="text-sm text-zinc-200" x-text="t.text"></p>
-                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button @click="moveTask(t.id,'inProgress','todo')" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">← Back</button>
-                          <button @click="moveTask(t.id,'inProgress','done')" class="text-xs text-zinc-500 hover:text-emerald-400 transition-colors">→ Done</button>
-                          <button @click="deleteTask(t.id,'inProgress')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
+                  <div x-html="meterSvg(c.usedToday, c.dailyLimit)"></div>
                 </div>
-                <!-- Done -->
-                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-                    <span class="font-semibold text-zinc-300 text-sm">Done</span>
-                    <span class="text-xs text-emerald-400" x-text="tasks.done.length"></span>
-                  </div>
-                  <div class="p-3 space-y-2 kanban-col">
-                    <template x-for="t in tasks.done" :key="t.id">
-                      <div class="bg-zinc-800 border-l-2 border-emerald-500/50 rounded-lg p-3 group opacity-70 hover:opacity-100 transition-opacity">
-                        <p class="text-sm text-zinc-400 line-through" x-text="t.text"></p>
-                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button @click="moveTask(t.id,'done','inProgress')" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">← Reopen</button>
-                          <button @click="deleteTask(t.id,'done')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
+
+                <!-- Safety cap = feature -->
+                <div class="mt-4 pt-3 border-t border-zinc-800/60 flex items-start gap-2">
+                  <svg class="w-3.5 h-3.5 text-emerald-500/70 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                  <p class="text-xs text-zinc-500" x-text="channelCap(c.channel)"></p>
                 </div>
               </div>
-            </div>
+            </template>
           </div>
         </div>
 
-        <!-- ── MEETINGS ── -->
-        <div x-show="page==='meetings'" class="p-8 max-w-5xl">
+        <!-- ══ ACTIVITY ══ -->
+        <div x-show="page==='activity'" class="p-8 max-w-4xl mx-auto">
+          <div class="flex gap-2 mb-6 flex-wrap">
+            <template x-for="f in [['all','All'],['outbound','Outbound'],['inbound','Inbound'],['hot','Hot leads'],['blocked','Blocked']]" :key="f[0]">
+              <button @click="activityFilter=f[0]"
+                class="text-xs px-3 py-1.5 rounded-full border font-medium transition-colors"
+                :class="activityFilter===f[0] ? 'bg-orange-500/15 text-orange-400 border-orange-500/30' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'"
+                x-text="f[1]"></button>
+            </template>
+          </div>
 
-          <!-- Platform cards row -->
-          <div class="mb-8">
-            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Meeting Platforms</h2>
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <template x-for="[key, mp] in Object.entries(meetingPlatforms)" :key="key">
-                <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col items-center gap-3 cursor-pointer hover:border-zinc-600 transition-colors" @click="meetingSetupKey=key">
-                  <div class="w-12 h-12 rounded-xl flex items-center justify-center" :style="`background:${mp.color}22`">
-                    <div x-html="logo(key)" class="w-8 h-8 flex items-center justify-center"></div>
+          <div x-show="!activityLoaded" class="space-y-2">
+            <template x-for="i in 8" :key="i"><div class="skeleton h-16 rounded-xl"></div></template>
+          </div>
+
+          <div x-show="activityLoaded && activity.length===0" class="text-center py-20">
+            <div class="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            </div>
+            <h2 class="text-xl font-bold text-white">No activity yet</h2>
+            <p class="text-zinc-500 mt-2 max-w-sm mx-auto">Once a campaign is active and the loop is running, every send, reply, and quality-gate decision shows up here.</p>
+            <button @click="navigate('campaigns')" class="mt-5 text-sm font-medium text-orange-400 hover:text-orange-300 transition-colors">Go to campaigns →</button>
+          </div>
+          <div x-show="activityLoaded && activity.length>0 && filteredActivity.length===0" class="text-center py-16 text-zinc-500 text-sm">Nothing matches this filter.</div>
+
+          <div x-show="activityLoaded && filteredActivity.length>0" class="space-y-2">
+            <template x-for="item in filteredActivity" :key="item.id">
+              <div class="bg-zinc-900 border rounded-xl px-5 py-3.5 flex items-start gap-4"
+                   :class="item.type==='blocked' ? 'border-red-900/40' : 'border-zinc-800'">
+                <!-- direction arrow -->
+                <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                     :class="item.direction==='inbound' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-400'">
+                  <svg x-show="item.direction==='outbound'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M17 7H8m9 0v9"/></svg>
+                  <svg x-show="item.direction==='inbound'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M17 7L7 17m0 0h9m-9 0V8"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="w-6 h-6 inline-flex shrink-0" x-html="logo(item.channel)"></span>
+                    <p class="text-sm font-medium text-zinc-200" x-text="item.prospect_name"></p>
+                    <span class="text-xs text-zinc-600" x-text="item.prospect_company"></span>
+                    <span x-show="item.type==='hot_lead'" class="text-xs bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full font-medium">Hot lead</span>
+                    <span x-show="item.type==='blocked'" class="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-medium">Blocked</span>
+                    <span x-show="item.classification && item.type!=='hot_lead'" class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-medium capitalize" x-text="classificationLabel(item.classification)"></span>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-semibold text-zinc-200" x-text="mp.label"></p>
-                    <p class="text-xs text-zinc-600 mt-0.5">Click to set up</p>
+                  <p class="text-xs text-zinc-500 mt-1" x-text="activityLabel(item)"></p>
+                  <p x-show="item.content_preview" class="text-xs text-zinc-600 mt-1 truncate italic" x-text="'“' + item.content_preview + '”'"></p>
+                </div>
+                <span class="text-xs text-zinc-600 shrink-0 whitespace-nowrap" x-text="timeAgo(item.sent_at)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- ══ SETTINGS ══ -->
+        <div x-show="page==='settings'" class="p-8 max-w-4xl mx-auto space-y-6">
+
+          <!-- System health -->
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h2 class="font-semibold text-white mb-4">System health</h2>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold mb-1">Status</p>
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full" :class="health && health.status==='ok' ? 'bg-emerald-400' : 'bg-red-400'"></div>
+                  <span class="text-sm text-zinc-300" x-text="health ? (health.status==='ok' ? 'Healthy' : health.status) : 'Unreachable'"></span>
+                </div>
+              </div>
+              <div>
+                <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold mb-1">Uptime</p>
+                <p class="text-sm text-zinc-300" x-text="fmtUptime(health?.uptime)"></p>
+              </div>
+              <div>
+                <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold mb-1">Outreach loop</p>
+                <p class="text-sm" :class="loop.running ? 'text-emerald-400' : 'text-zinc-400'" x-text="loop.running ? 'Running' : 'Stopped'"></p>
+              </div>
+              <div>
+                <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold mb-1">Last check</p>
+                <p class="text-sm text-zinc-300" x-text="health?.ts ? timeAgo(health.ts) : '—'"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Environment -->
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-1">
+              <h2 class="font-semibold text-white">Environment configuration</h2>
+            </div>
+            <p class="text-sm text-zinc-500 mb-4">Missing variables per channel — names only, values are never shown. Edit <code class="bg-zinc-800 border border-zinc-700 text-orange-400 px-1.5 py-0.5 rounded text-xs">.env</code> and restart BDRclaw to apply.</p>
+
+            <div x-show="!settingsEnvLoaded" class="space-y-2">
+              <template x-for="i in 3" :key="i"><div class="skeleton h-10"></div></template>
+            </div>
+            <div x-show="settingsEnvLoaded && settingsEnv===null" class="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-500">
+              Environment check is not available on this backend version.
+            </div>
+            <div x-show="settingsEnvLoaded && settingsEnv && settingsEnv.length===0" class="bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-4 py-3 text-sm text-emerald-400">
+              All required environment variables are present.
+            </div>
+            <div x-show="settingsEnvLoaded && settingsEnv && settingsEnv.length>0" class="divide-y divide-zinc-800/60">
+              <template x-for="e in (settingsEnv ?? [])" :key="e.channel">
+                <div class="py-3 flex items-start gap-4">
+                  <span class="w-6 h-6 inline-flex shrink-0" x-html="logo(e.channel)"></span>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-zinc-300" x-text="channelLabel(e.channel)"></p>
+                    <div x-show="e.missing.length>0" class="flex flex-wrap gap-1.5 mt-1.5">
+                      <template x-for="v in e.missing" :key="v">
+                        <code class="text-xs bg-zinc-950 border border-zinc-700 text-amber-400 px-1.5 py-0.5 rounded" x-text="v"></code>
+                      </template>
+                    </div>
+                    <p x-show="e.missing.length===0" class="text-xs text-emerald-500 mt-1">All set</p>
                   </div>
                 </div>
               </template>
             </div>
           </div>
 
-          <!-- Transcription sources -->
-          <div class="mb-8">
-            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Transcription Sources</h2>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <!-- Granola -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <div class="flex items-center gap-3 mb-3">
-                  <div class="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center" x-html="logo('granola')"></div>
-                  <div>
-                    <p class="font-semibold text-zinc-200">Granola</p>
-                    <p class="text-xs text-zinc-500">Paste transcript below</p>
-                  </div>
-                  <span class="ml-auto text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">Paste only</span>
-                </div>
-                <p class="text-xs text-zinc-600">Granola has no public API. Copy your meeting notes from the Granola app and paste into the transcript area below.</p>
+          <!-- Compliance -->
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h2 class="font-semibold text-white mb-1">Compliance</h2>
+            <p class="text-sm text-zinc-500 mb-4">CAN-SPAM and TCPA opt-outs are enforced automatically — unsubscribes and STOP replies suppress a contact across every channel, permanently.</p>
+            <div class="flex items-center gap-4 flex-wrap">
+              <div class="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3">
+                <p class="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Suppression list</p>
+                <p class="text-xl font-bold text-white mt-0.5">
+                  <span x-text="suppressionCount ?? '—'"></span>
+                  <span class="text-xs font-normal text-zinc-600" x-text="suppressionCount===null ? (suppressionLoaded ? ' unavailable' : '') : ' contacts'"></span>
+                </p>
               </div>
-              <!-- Otter.ai -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <div class="flex items-center gap-3 mb-3">
-                  <div class="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center" x-html="logo('otter')"></div>
-                  <div>
-                    <p class="font-semibold text-zinc-200">Otter.ai</p>
-                    <p class="text-xs text-zinc-500">Auto-fetch transcripts</p>
-                  </div>
-                  <button @click="loadOtterTranscripts()" :disabled="otterLoading" class="ml-auto text-xs bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 px-3 py-1 rounded-lg font-medium transition-colors">
-                    <span x-text="otterLoading?'Loading…':'Fetch'"></span>
-                  </button>
-                </div>
-                <div x-show="otterTranscripts.length>0" class="space-y-2 max-h-32 overflow-y-auto">
-                  <template x-for="t in otterTranscripts" :key="t.otid">
-                    <button @click="meetingTranscript=t.text||t.summary||''" class="w-full text-left px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors">
-                      <p class="text-xs font-medium text-zinc-300 truncate" x-text="t.title"></p>
-                    </button>
-                  </template>
-                </div>
-                <p x-show="otterTranscripts.length===0&&!otterLoading" class="text-xs text-zinc-600">Set OTTER_USERNAME + OTTER_PASSWORD in .env to auto-fetch.</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Transcript input + analyze -->
-          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
-            <h2 class="font-semibold text-white mb-4">Analyze Meeting</h2>
-            <div class="grid grid-cols-3 gap-3 mb-4">
-              <input x-model="meetingTopic" type="text" placeholder="Meeting topic"
-                class="bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
-              <input x-model="meetingAttendees" type="text" placeholder="Attendees (names/roles)"
-                class="bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
-              <input x-model="meetingMyRole" type="text" placeholder="Your role in this meeting"
-                class="bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
-            </div>
-            <textarea x-model="meetingTranscript" placeholder="Paste meeting transcript here… (from Granola, Otter, or any recording tool)"
-              class="w-full h-40 bg-zinc-950 border border-zinc-700 text-zinc-300 placeholder-zinc-600 rounded-lg px-4 py-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 mb-4"></textarea>
-            <button @click="analyzeMeeting()" :disabled="!meetingTranscript.trim()||meetingAnalyzing"
-              class="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
-              <span x-show="meetingAnalyzing" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              <span x-text="meetingAnalyzing?'Analyzing…':'Analyze with AI'"></span>
-            </button>
-          </div>
-
-          <!-- Analysis results -->
-          <div x-show="meetingAnalysis" class="space-y-4">
-            <!-- Summary + sentiment -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-white">Summary</h3>
-                <span class="text-xs px-2.5 py-1 rounded-full font-medium"
-                  :class="meetingAnalysis?.sentiment==='very_positive'?'bg-emerald-500/15 text-emerald-400':meetingAnalysis?.sentiment==='positive'?'bg-sky-500/15 text-sky-400':meetingAnalysis?.sentiment==='negative'?'bg-red-500/15 text-red-400':'bg-zinc-800 text-zinc-400'"
-                  x-text="meetingAnalysis?.sentiment?.replace('_',' ')?.toUpperCase()"></span>
-              </div>
-              <p class="text-sm text-zinc-300" x-text="meetingAnalysis?.summary"></p>
-            </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <!-- Key insights -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <h3 class="font-semibold text-white mb-3">Key Insights</h3>
-                <ul class="space-y-2">
-                  <template x-for="ins in meetingAnalysis?.keyInsights??[]" :key="ins">
-                    <li class="flex items-start gap-2 text-sm text-zinc-300">
-                      <span class="text-orange-400 mt-0.5 shrink-0">•</span>
-                      <span x-text="ins"></span>
-                    </li>
-                  </template>
-                </ul>
-              </div>
-              <!-- Action items -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <h3 class="font-semibold text-white mb-3">Action Items</h3>
-                <ul class="space-y-2">
-                  <template x-for="a in meetingAnalysis?.actionItems??[]" :key="a.task">
-                    <li class="flex items-start gap-2 text-sm">
-                      <span class="text-emerald-400 mt-0.5 shrink-0">✓</span>
-                      <span class="text-zinc-300" x-text="a.task"></span>
-                      <span x-show="a.owner" class="text-zinc-600 text-xs ml-auto shrink-0" x-text="'→ '+a.owner"></span>
-                    </li>
-                  </template>
-                </ul>
-              </div>
-            </div>
-            <!-- Draft messages tabs -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-              <div class="flex border-b border-zinc-800 px-2 gap-1">
-                <button @click="meetingDraftTab='email'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='email'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Email Draft</button>
-                <button @click="meetingDraftTab='sms'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='sms'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">SMS</button>
-                <button @click="meetingDraftTab='telegram'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='telegram'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Telegram</button>
-                <button @click="meetingDraftTab='linkedin'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='linkedin'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">LinkedIn DM</button>
-              </div>
-              <div class="p-5">
-                <div class="relative">
-                  <textarea class="w-full h-40 bg-zinc-950 border border-zinc-700 text-zinc-300 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                    :value="meetingDraftTab==='email'?meetingAnalysis?.emailDraft:meetingDraftTab==='sms'?meetingAnalysis?.smsDraft:meetingDraftTab==='telegram'?meetingAnalysis?.telegramDraft:meetingAnalysis?.linkedinMessage"></textarea>
-                  <button @click="copyDraft()" class="absolute top-2 right-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-2 py-1 rounded transition-colors">Copy</button>
-                </div>
+              <div class="flex flex-col gap-1.5 text-sm">
+                <a href="/privacy" target="_blank" class="text-orange-400 hover:text-orange-300 transition-colors">Privacy policy →</a>
+                <a href="/terms" target="_blank" class="text-orange-400 hover:text-orange-300 transition-colors">Terms of service →</a>
+                <a href="/unsubscribe" target="_blank" class="text-orange-400 hover:text-orange-300 transition-colors">Unsubscribe page →</a>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ── CHANNELS ── -->
-        <div x-show="page==='channels'" class="p-8 max-w-4xl">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <template x-for="[key, ch] in Object.entries(channels)" :key="key">
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-center gap-4" :class="ch.active?'border-emerald-800/40':''">
-                <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" :style="`background:${ch.color}22`">
-                  <div x-html="logo(key)" class="w-8 h-8 flex items-center justify-center"></div>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <p class="font-semibold text-zinc-200" x-text="ch.label"></p>
-                    <span x-show="ch.active" class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">Connected</span>
-                  </div>
-                  <p class="text-xs text-zinc-600 mt-0.5" x-text="ch.active?'Channel active — messages sending':'Not connected'"></p>
-                </div>
-                <button @click="openChannelSetup(key)" class="text-xs border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors" x-text="ch.active?'Settings':'Set up'"></button>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- ── CRM ── -->
-        <div x-show="page==='crm'" class="p-8 max-w-4xl">
+        <!-- ══ CRM (carried over) ══ -->
+        <div x-show="page==='crm'" class="p-8 max-w-4xl mx-auto">
           <div x-show="crmAdapters.length===0" class="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-5 text-sm text-zinc-500">
             No CRM adapters connected. Set <code class="bg-zinc-800 text-orange-400 px-1 rounded">HUBSPOT_ACCESS_TOKEN</code>, <code class="bg-zinc-800 text-orange-400 px-1 rounded">SALESFORCE_*</code>, or <code class="bg-zinc-800 text-orange-400 px-1 rounded">MONDAY_API_KEY</code> to activate.
           </div>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <!-- HubSpot -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-3">
               <div class="w-14 h-14 rounded-xl bg-orange-500/10 flex items-center justify-center" x-html="logo('hubspot')"></div>
               <div class="text-center">
@@ -613,7 +736,6 @@
                 <p class="text-xs mt-0.5" :class="crmAdapters.find(a=>a.name==='hubspot')?'text-emerald-400':'text-zinc-600'" x-text="crmAdapters.find(a=>a.name==='hubspot')?'Connected':'Set HUBSPOT_ACCESS_TOKEN'"></p>
               </div>
             </div>
-            <!-- Salesforce -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-3">
               <div class="w-14 h-14 rounded-xl bg-sky-500/10 flex items-center justify-center" x-html="logo('salesforce')"></div>
               <div class="text-center">
@@ -621,7 +743,6 @@
                 <p class="text-xs mt-0.5" :class="crmAdapters.find(a=>a.name==='salesforce')?'text-emerald-400':'text-zinc-600'" x-text="crmAdapters.find(a=>a.name==='salesforce')?'Connected':'Set SALESFORCE_* vars'"></p>
               </div>
             </div>
-            <!-- Monday -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-3">
               <div class="w-14 h-14 rounded-xl bg-red-500/10 flex items-center justify-center" x-html="logo('monday')"></div>
               <div class="text-center">
@@ -638,10 +759,9 @@
           </div>
         </div>
 
-        <!-- ── AI EMAIL ── -->
-        <div x-show="page==='aiemail'" class="p-8 max-w-4xl">
+        <!-- ══ AI EMAIL (carried over) ══ -->
+        <div x-show="page==='aiemail'" class="p-8 max-w-4xl mx-auto">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <!-- Instantly -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div class="flex items-center gap-4 mb-4">
                 <div class="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center" x-html="logo('instantly')"></div>
@@ -668,7 +788,6 @@
                 Add <code class="bg-zinc-800 text-orange-400 px-1 rounded">INSTANTLY_API_KEY</code> to your .env and restart.
               </div>
             </div>
-            <!-- Salesforge -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div class="flex items-center gap-4 mb-4">
                 <div class="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center" x-html="logo('salesforge')"></div>
@@ -696,9 +815,242 @@
               </div>
             </div>
           </div>
-          <!-- Coming soon teaser -->
           <div class="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-xl p-6 text-center">
             <p class="text-zinc-600 text-sm">More AI email platforms coming soon: Lemlist, Apollo, Reply.io</p>
+          </div>
+        </div>
+
+        <!-- ══ DOCS (carried over) ══ -->
+        <div x-show="page==='docs'" class="flex h-full">
+          <div class="flex-1 flex flex-col overflow-hidden">
+            <div class="flex border-b border-zinc-800 bg-zinc-900 px-6 gap-6 shrink-0">
+              <button @click="docsTab='notes'" class="py-3.5 text-sm font-medium border-b-2 transition-colors" :class="docsTab==='notes'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Notes</button>
+              <button @click="docsTab='tasks'" class="py-3.5 text-sm font-medium border-b-2 transition-colors" :class="docsTab==='tasks'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Task Board</button>
+            </div>
+
+            <div x-show="docsTab==='notes'" class="flex flex-1 overflow-hidden">
+              <div class="w-56 bg-zinc-900 border-r border-zinc-800 overflow-y-auto flex flex-col">
+                <div class="p-3">
+                  <button @click="newNote()" class="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 rounded-lg px-3 py-2 text-xs font-semibold transition-colors">+ New note</button>
+                </div>
+                <div class="flex-1 overflow-y-auto">
+                  <template x-for="n in notes" :key="n.id">
+                    <button @click="selectNote(n.id)" class="w-full text-left px-4 py-3 border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors" :class="currentNoteId===n.id?'bg-orange-500/[0.08] border-l-2 border-l-orange-500':''">
+                      <p class="text-sm font-medium text-zinc-200 truncate" x-text="n.title||'Untitled'"></p>
+                      <p class="text-xs text-zinc-600 mt-0.5 truncate" x-text="n.preview||'Empty note'"></p>
+                    </button>
+                  </template>
+                  <div x-show="notes.length===0" class="px-4 py-8 text-center text-zinc-600 text-xs">No notes yet.</div>
+                </div>
+              </div>
+              <div class="flex-1 flex flex-col overflow-hidden">
+                <div x-show="!currentNoteId" class="flex-1 flex items-center justify-center text-zinc-700 text-sm">Select or create a note</div>
+                <div x-show="currentNoteId" class="flex-1 flex flex-col overflow-hidden">
+                  <div class="px-6 py-4 border-b border-zinc-800 flex items-center gap-3">
+                    <input x-model="currentNoteTitle" @input="saveCurrentNote()" type="text" placeholder="Note title"
+                      class="flex-1 bg-transparent text-white font-semibold text-lg border-none outline-none placeholder-zinc-700" />
+                    <button @click="deleteCurrentNote()" class="text-zinc-600 hover:text-red-400 transition-colors text-xs">Delete</button>
+                  </div>
+                  <textarea x-model="currentNoteContent" @input="saveCurrentNote()" placeholder="Start writing…"
+                    class="flex-1 bg-transparent text-zinc-300 text-sm leading-relaxed px-6 py-4 resize-none outline-none placeholder-zinc-700 font-mono"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div x-show="docsTab==='tasks'" class="flex-1 overflow-y-auto p-6">
+              <div class="flex gap-3 mb-6">
+                <input x-model="newTaskText" @keydown.enter="addTask(newTaskCol)" type="text" placeholder="New task… press Enter to add"
+                  class="focus-ring flex-1 bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+                <select x-model="newTaskCol" class="bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg px-3 py-2.5 text-sm">
+                  <option value="todo">To Do</option>
+                  <option value="inProgress">In Progress</option>
+                  <option value="done">Done</option>
+                </select>
+                <button @click="addTask(newTaskCol)" class="bg-orange-500 hover:bg-orange-400 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">Add</button>
+              </div>
+              <div class="grid grid-cols-3 gap-4">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+                    <span class="font-semibold text-zinc-300 text-sm">To Do</span>
+                    <span class="text-xs text-zinc-600" x-text="tasks.todo.length"></span>
+                  </div>
+                  <div class="p-3 space-y-2 kanban-col">
+                    <template x-for="t in tasks.todo" :key="t.id">
+                      <div class="bg-zinc-800 rounded-lg p-3 group">
+                        <p class="text-sm text-zinc-200" x-text="t.text"></p>
+                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button @click="moveTask(t.id,'todo','inProgress')" class="text-xs text-zinc-500 hover:text-orange-400 transition-colors">→ In Progress</button>
+                          <button @click="deleteTask(t.id,'todo')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+                    <span class="font-semibold text-zinc-300 text-sm">In Progress</span>
+                    <span class="text-xs text-amber-400" x-text="tasks.inProgress.length"></span>
+                  </div>
+                  <div class="p-3 space-y-2 kanban-col">
+                    <template x-for="t in tasks.inProgress" :key="t.id">
+                      <div class="bg-zinc-800 border-l-2 border-amber-500/50 rounded-lg p-3 group">
+                        <p class="text-sm text-zinc-200" x-text="t.text"></p>
+                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button @click="moveTask(t.id,'inProgress','todo')" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">← Back</button>
+                          <button @click="moveTask(t.id,'inProgress','done')" class="text-xs text-zinc-500 hover:text-emerald-400 transition-colors">→ Done</button>
+                          <button @click="deleteTask(t.id,'inProgress')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                  <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+                    <span class="font-semibold text-zinc-300 text-sm">Done</span>
+                    <span class="text-xs text-emerald-400" x-text="tasks.done.length"></span>
+                  </div>
+                  <div class="p-3 space-y-2 kanban-col">
+                    <template x-for="t in tasks.done" :key="t.id">
+                      <div class="bg-zinc-800 border-l-2 border-emerald-500/50 rounded-lg p-3 group opacity-70 hover:opacity-100 transition-opacity">
+                        <p class="text-sm text-zinc-400 line-through" x-text="t.text"></p>
+                        <div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button @click="moveTask(t.id,'done','inProgress')" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">← Reopen</button>
+                          <button @click="deleteTask(t.id,'done')" class="text-xs text-zinc-500 hover:text-red-400 transition-colors ml-auto">✕</button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ MEETINGS (carried over) ══ -->
+        <div x-show="page==='meetings'" class="p-8 max-w-5xl mx-auto">
+          <div class="mb-8">
+            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Meeting platforms</h2>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <template x-for="[key, mp] in Object.entries(meetingPlatforms)" :key="key">
+                <button class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col items-center gap-3 cursor-pointer hover:border-zinc-600 transition-colors" @click="setupKey=key">
+                  <div class="w-12 h-12 rounded-xl flex items-center justify-center" :style="'background:' + mp.color + '22'">
+                    <span x-html="logo(key)" class="w-8 h-8 flex items-center justify-center"></span>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-semibold text-zinc-200" x-text="mp.label"></p>
+                    <p class="text-xs text-zinc-600 mt-0.5">Click to set up</p>
+                  </div>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div class="mb-8">
+            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Transcription sources</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-3">
+                  <div class="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center" x-html="logo('granola')"></div>
+                  <div>
+                    <p class="font-semibold text-zinc-200">Granola</p>
+                    <p class="text-xs text-zinc-500">Paste transcript below</p>
+                  </div>
+                  <span class="ml-auto text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">Paste only</span>
+                </div>
+                <p class="text-xs text-zinc-600">Granola has no public API. Copy your meeting notes from the Granola app and paste into the transcript area below.</p>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-3">
+                  <div class="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center" x-html="logo('otter')"></div>
+                  <div>
+                    <p class="font-semibold text-zinc-200">Otter.ai</p>
+                    <p class="text-xs text-zinc-500">Auto-fetch transcripts</p>
+                  </div>
+                  <button @click="loadOtterTranscripts()" :disabled="otterLoading" class="ml-auto text-xs bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 px-3 py-1 rounded-lg font-medium transition-colors">
+                    <span x-text="otterLoading?'Loading…':'Fetch'"></span>
+                  </button>
+                </div>
+                <div x-show="otterTranscripts.length>0" class="space-y-2 max-h-32 overflow-y-auto">
+                  <template x-for="t in otterTranscripts" :key="t.otid">
+                    <button @click="meetingTranscript=t.text||t.summary||''" class="w-full text-left px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors">
+                      <p class="text-xs font-medium text-zinc-300 truncate" x-text="t.title"></p>
+                    </button>
+                  </template>
+                </div>
+                <p x-show="otterTranscripts.length===0&&!otterLoading" class="text-xs text-zinc-600">Set OTTER_USERNAME + OTTER_PASSWORD in .env to auto-fetch.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
+            <h2 class="font-semibold text-white mb-4">Analyze meeting</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <input x-model="meetingTopic" type="text" placeholder="Meeting topic"
+                class="focus-ring bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+              <input x-model="meetingAttendees" type="text" placeholder="Attendees (names/roles)"
+                class="focus-ring bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+              <input x-model="meetingMyRole" type="text" placeholder="Your role in this meeting"
+                class="focus-ring bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+            </div>
+            <textarea x-model="meetingTranscript" placeholder="Paste meeting transcript here… (from Granola, Otter, or any recording tool)"
+              class="focus-ring w-full h-40 bg-zinc-950 border border-zinc-700 text-zinc-300 placeholder-zinc-600 rounded-lg px-4 py-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 mb-4"></textarea>
+            <button @click="analyzeMeeting()" :disabled="!meetingTranscript.trim()||meetingAnalyzing"
+              class="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+              <span x-show="meetingAnalyzing" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span x-text="meetingAnalyzing?'Analyzing…':'Analyze with AI'"></span>
+            </button>
+          </div>
+
+          <div x-show="meetingAnalysis" class="space-y-4">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-white">Summary</h3>
+                <span class="text-xs px-2.5 py-1 rounded-full font-medium"
+                  :class="meetingAnalysis?.sentiment==='very_positive'?'bg-emerald-500/15 text-emerald-400':meetingAnalysis?.sentiment==='positive'?'bg-sky-500/15 text-sky-400':meetingAnalysis?.sentiment==='negative'?'bg-red-500/15 text-red-400':'bg-zinc-800 text-zinc-400'"
+                  x-text="meetingAnalysis?.sentiment?.replace('_',' ')?.toUpperCase()"></span>
+              </div>
+              <p class="text-sm text-zinc-300" x-text="meetingAnalysis?.summary"></p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <h3 class="font-semibold text-white mb-3">Key insights</h3>
+                <ul class="space-y-2">
+                  <template x-for="ins in meetingAnalysis?.keyInsights??[]" :key="ins">
+                    <li class="flex items-start gap-2 text-sm text-zinc-300">
+                      <span class="text-orange-400 mt-0.5 shrink-0">•</span>
+                      <span x-text="ins"></span>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <h3 class="font-semibold text-white mb-3">Action items</h3>
+                <ul class="space-y-2">
+                  <template x-for="a in meetingAnalysis?.actionItems??[]" :key="a.task">
+                    <li class="flex items-start gap-2 text-sm">
+                      <span class="text-emerald-400 mt-0.5 shrink-0">✓</span>
+                      <span class="text-zinc-300" x-text="a.task"></span>
+                      <span x-show="a.owner" class="text-zinc-600 text-xs ml-auto shrink-0" x-text="'→ '+a.owner"></span>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+            </div>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              <div class="flex border-b border-zinc-800 px-2 gap-1">
+                <button @click="meetingDraftTab='email'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='email'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Email Draft</button>
+                <button @click="meetingDraftTab='sms'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='sms'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">SMS</button>
+                <button @click="meetingDraftTab='telegram'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='telegram'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">Telegram</button>
+                <button @click="meetingDraftTab='linkedin'" class="py-3 px-3 text-xs font-medium border-b-2 transition-colors" :class="meetingDraftTab==='linkedin'?'border-orange-500 text-orange-400':'border-transparent text-zinc-500 hover:text-zinc-300'">LinkedIn DM</button>
+              </div>
+              <div class="p-5">
+                <div class="relative">
+                  <textarea readonly class="w-full h-40 bg-zinc-950 border border-zinc-700 text-zinc-300 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                    :value="meetingDraftTab==='email'?meetingAnalysis?.emailDraft:meetingDraftTab==='sms'?meetingAnalysis?.smsDraft:meetingDraftTab==='telegram'?meetingAnalysis?.telegramDraft:meetingAnalysis?.linkedinMessage"></textarea>
+                  <button @click="copyDraft()" class="absolute top-2 right-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-2 py-1 rounded transition-colors">Copy</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -708,7 +1060,6 @@
 
   <!-- ── Oration floating button + panel ── -->
   <div class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
-    <!-- Panel -->
     <div x-show="orationOpen" x-transition class="w-80 bg-zinc-900/95 border border-zinc-700 rounded-2xl shadow-2xl oration-panel overflow-hidden">
       <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -730,20 +1081,18 @@
           <div class="w-3 h-3 border-2 border-zinc-500 border-t-orange-400 rounded-full animate-spin"></div>
           Thinking…
         </div>
-        <!-- Mic + text input -->
         <div class="flex gap-2">
           <input x-model="orationTranscript" @keydown.enter="sendOration()" type="text" placeholder="Type or speak…"
-            class="flex-1 bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
+            class="focus-ring flex-1 bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/40" />
           <button @click="sendOration()" :disabled="!orationTranscript.trim()||orationLoading" class="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 text-white px-3 py-2 rounded-lg transition-colors">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
         </div>
       </div>
     </div>
-    <!-- Mic button -->
-    <button @click="toggleOration()"
+    <button @click="toggleOration()" aria-label="Voice control"
       class="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-200"
-      :class="orationListening?'bg-red-500 hover:bg-red-400 animate-pulse':orationOpen?'bg-orange-500 hover:bg-orange-400':'bg-orange-500 hover:bg-orange-400'">
+      :class="orationListening?'bg-red-500 hover:bg-red-400 animate-pulse':'bg-orange-500 hover:bg-orange-400'">
       <svg x-show="!orationListening" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
       </svg>
@@ -753,523 +1102,90 @@
     </button>
   </div>
 
-  <!-- ── MODAL: Add Lead ── -->
-  <div x-show="showAddLead" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+  <!-- ── MODAL: Add prospect ── -->
+  <div x-show="showAddLead" class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Add prospect">
     <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="showAddLead=false"></div>
     <div class="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
       <div class="flex items-center justify-between mb-5">
-        <h2 class="font-bold text-white text-lg">Add a Lead</h2>
-        <button @click="showAddLead=false" class="text-zinc-500 hover:text-zinc-300 transition-colors"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+        <h2 class="font-bold text-white text-lg">Add a prospect</h2>
+        <button @click="showAddLead=false" class="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>
       <div class="space-y-3">
-        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Full Name *</label><input x-model="newLead.name" type="text" placeholder="Sarah Johnson" class="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
-        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Company *</label><input x-model="newLead.company" type="text" placeholder="Acme Corp" class="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
-        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Title *</label><input x-model="newLead.title" type="text" placeholder="VP of Sales" class="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
+        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Full name *</label><input x-model="newLead.name" type="text" placeholder="Sarah Johnson" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
+        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Company *</label><input x-model="newLead.company" type="text" placeholder="Acme Corp" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
+        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Title *</label><input x-model="newLead.title" type="text" placeholder="VP of Sales" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Email</label><input x-model="newLead.email" type="email" placeholder="sarah@acme.com" class="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
-          <div><label class="block text-xs font-semibold text-zinc-400 mb-1">LinkedIn</label><input x-model="newLead.linkedin_url" type="url" placeholder="linkedin.com/in/…" class="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
+          <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Email</label><input x-model="newLead.email" type="email" placeholder="sarah@acme.com" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
+          <div><label class="block text-xs font-semibold text-zinc-400 mb-1">LinkedIn URL</label><input x-model="newLead.linkedin_url" type="url" placeholder="linkedin.com/in/…" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
         </div>
+        <div><label class="block text-xs font-semibold text-zinc-400 mb-1">Phone</label><input x-model="newLead.phone" type="tel" placeholder="+1 555 000 0000" class="focus-ring w-full bg-zinc-950 border border-zinc-700 text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" /></div>
       </div>
       <div class="flex gap-3 mt-6">
         <button @click="showAddLead=false" class="flex-1 border border-zinc-700 hover:border-zinc-500 text-zinc-400 py-2.5 rounded-lg text-sm font-medium transition-colors">Cancel</button>
-        <button @click="addLead()" :disabled="!newLead.name||!newLead.company||!newLead.title" class="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">Add Lead</button>
+        <button @click="addLead()" :disabled="!newLead.name||!newLead.company||!newLead.title||addLeadBusy" class="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" x-text="addLeadBusy?'Adding…':'Add prospect'"></button>
       </div>
     </div>
   </div>
 
-  <!-- ── MODAL: Channel Setup ── -->
-  <div x-show="channelSetupKey" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="channelSetupKey=null"></div>
+  <!-- ── MODAL: Import CSV ── -->
+  <div x-show="showImport" class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Import CSV">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="showImport=false"></div>
+    <div class="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-bold text-white text-lg">Import prospects from CSV</h2>
+        <button @click="showImport=false" class="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <p class="text-sm text-zinc-500 mb-4">Header row required. Recognized columns: <span class="text-zinc-400">name, company, title</span> (required) plus email, linkedin, phone, tags.</p>
+
+      <label class="block border-2 border-dashed border-zinc-700 hover:border-orange-500/50 rounded-xl p-6 text-center cursor-pointer transition-colors">
+        <input type="file" accept=".csv,text/csv" class="hidden" @change="onImportFile($event)" />
+        <svg class="w-8 h-8 text-zinc-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <p class="text-sm text-zinc-400" x-text="importFileName || 'Click to choose a .csv file'"></p>
+      </label>
+
+      <div x-show="importRows.length>0" class="mt-4 bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm">
+        <p class="text-zinc-300"><span class="font-semibold tabular" x-text="importRows.length"></span> rows parsed · <span class="font-semibold text-emerald-400 tabular" x-text="importReadyCount"></span> ready to import</p>
+        <p x-show="importReadyCount < importRows.length" class="text-xs text-amber-400 mt-1"><span class="tabular" x-text="importRows.length - importReadyCount"></span> rows are missing name, company, or title and will be skipped.</p>
+      </div>
+
+      <div x-show="importResult" class="mt-4 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-4 py-3 text-sm text-emerald-400">
+        Imported <span class="font-semibold tabular" x-text="importResult?.imported ?? 0"></span> prospects<span x-show="importResult?.errors?.length">, <span class="tabular" x-text="importResult?.errors?.length"></span> rows skipped</span>.
+      </div>
+
+      <div class="flex gap-3 mt-6">
+        <button @click="showImport=false" class="flex-1 border border-zinc-700 hover:border-zinc-500 text-zinc-400 py-2.5 rounded-lg text-sm font-medium transition-colors" x-text="importResult ? 'Done' : 'Cancel'"></button>
+        <button x-show="!importResult" @click="runImport()" :disabled="importRows.length===0||importBusy"
+          class="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
+          x-text="importBusy ? 'Importing…' : 'Import'"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL: Channel / platform setup ── -->
+  <div x-show="setupKey" class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Channel setup">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="setupKey=null"></div>
     <div class="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
       <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center" :style="channelSetupKey&&channels[channelSetupKey]?`background:${channels[channelSetupKey].color}22`:''">
-            <div x-html="channelSetupKey?logo(channelSetupKey):''"></div>
+          <div class="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center">
+            <span x-html="setupKey ? logo(setupKey) : ''"></span>
           </div>
-          <h2 class="font-bold text-white text-lg" x-text="channelSetupKey&&channels[channelSetupKey]?'Set up '+channels[channelSetupKey].label:(channelSetupKey&&meetingPlatforms[channelSetupKey]?'Set up '+meetingPlatforms[channelSetupKey].label:'Set up')"></h2>
+          <h2 class="font-bold text-white text-lg" x-text="setupKey ? 'Set up ' + setupLabel(setupKey) : ''"></h2>
         </div>
-        <button @click="channelSetupKey=null" class="text-zinc-500 hover:text-zinc-300 transition-colors"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+        <button @click="setupKey=null" class="text-zinc-500 hover:text-zinc-300 transition-colors" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>
       <p class="text-sm text-zinc-500 mb-4">Follow these steps in your <code class="bg-zinc-800 border border-zinc-700 text-orange-400 px-1.5 py-0.5 rounded">.env</code> file, then restart BDRclaw.</p>
       <div class="space-y-3">
-        <template x-for="(step,i) in (channelSetupKey?(channels[channelSetupKey]?.setupSteps||meetingPlatforms[channelSetupKey]?.setupSteps||[]):([])) " :key="i">
+        <template x-for="(step,i) in (setupKey ? channelSetupSteps(setupKey) : [])" :key="i">
           <div class="flex items-start gap-3">
             <div class="w-6 h-6 rounded-full bg-orange-500/15 border border-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" x-text="i+1"></div>
             <p class="text-sm text-zinc-300" x-text="step"></p>
           </div>
         </template>
       </div>
-      <button @click="channelSetupKey=null" class="w-full mt-5 bg-orange-500 hover:bg-orange-400 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">Got it</button>
+      <button @click="setupKey=null" class="w-full mt-5 bg-orange-500 hover:bg-orange-400 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">Got it</button>
     </div>
   </div>
 
-  <script>
-    function app() {
-      return {
-        page: 'dashboard',
-        loading: true,
-        loopRunning: false,
-        stats: { total_active:0, hot_leads:0, meetings_booked_total:0, today:{} },
-
-        channels: {
-          email:     { label:'Gmail',       color:'#EA4335', active:false, account:null, setupSteps:['Go to Google Cloud Console and create an OAuth app','Download credentials.json and place in the project root','Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in .env','Run: npm run auth:gmail to authorize'] },
-          linkedin:  { label:'LinkedIn',    color:'#0A66C2', active:false, account:null, setupSteps:['Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD in .env','BDRclaw uses browser automation via Playwright','Run: npm run setup:linkedin to verify the session'] },
-          sms:       { label:'SMS / Twilio',color:'#F22F46', active:false, account:null, setupSteps:['Create a Twilio account at twilio.com','Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER in .env','Set TWILIO_WEBHOOK_URL to your public BDRclaw URL + /webhooks/sms'] },
-          whatsapp:  { label:'WhatsApp',    color:'#25D366', active:false, account:null, setupSteps:['Activate WhatsApp in your Twilio console','Set TWILIO_WHATSAPP_FROM to your WhatsApp sender','Prospects must opt in before first message'] },
-          telegram:  { label:'Telegram',    color:'#24A1DE', active:false, account:null, setupSteps:['Create a bot via @BotFather on Telegram','Set TELEGRAM_BOT_TOKEN in .env','BDRclaw will start polling for messages automatically'] },
-          twitter:   { label:'Twitter / X', color:'#000000', active:false, account:null, setupSteps:['Create a Twitter Developer App at developer.twitter.com','Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET in .env'] },
-          instagram: { label:'Instagram',   color:'#E1306C', active:false, account:null, setupSteps:['Connect a Facebook Business account','Set INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_PAGE_ID in .env','Note: BDRclaw only DMs warm leads who first contact you'] },
-        },
-
-        meetingPlatforms: {
-          zoom:  { label:'Zoom',            color:'#2D8CFF', setupSteps:['Create a Zoom webhook at marketplace.zoom.us','Set ZOOM_WEBHOOK_SECRET_TOKEN in .env','Point webhook URL to: your-domain/api/zoom/webhook','Subscribe to meeting.ended events'] },
-          meet:  { label:'Google Meet',     color:'#00897B', setupSteps:['Google Meet recordings go to Google Drive automatically','Use Granola or Otter.ai alongside Meet for live transcription','Paste the transcript into the Analyze section below'] },
-          teams: { label:'Microsoft Teams', color:'#6264A7', setupSteps:['Enable Teams meeting recordings in your org settings','Recordings are saved to OneDrive/SharePoint','Copy the transcript from the Teams recording and paste below'] },
-          skype: { label:'Skype',           color:'#00AFF0', setupSteps:['Enable call recording in Skype settings','Skype saves recordings for 30 days','Copy transcript or summarize the call and paste below'] },
-        },
-
-        campaigns: [],
-        prospects: [],
-        activity: [],
-        hotLeads: [],
-        crmAdapters: [],
-
-        // Docs
-        docsTab: 'notes',
-        notes: [],
-        currentNoteId: null,
-        currentNoteTitle: '',
-        currentNoteContent: '',
-        tasks: { todo:[], inProgress:[], done:[] },
-        newTaskText: '',
-        newTaskCol: 'todo',
-
-        // Meetings
-        meetingTranscript: '',
-        meetingTopic: '',
-        meetingAttendees: '',
-        meetingMyRole: '',
-        meetingAnalyzing: false,
-        meetingAnalysis: null,
-        meetingDraftTab: 'email',
-        meetingSetupKey: null,
-        otterTranscripts: [],
-        otterLoading: false,
-
-        // AI Email
-        aiEmailStatus: { instantly:{active:false,campaigns:[]}, salesforge:{active:false,sequences:[]} },
-        aiEmailLoading: false,
-
-        // Oration
-        orationOpen: false,
-        orationListening: false,
-        orationTranscript: '',
-        orationResponse: '',
-        orationLoading: false,
-        orationSpeechSupported: false,
-        _recognition: null,
-
-        // UI state
-        builderId: null,
-        builderMessages: [],
-        builderInput: '',
-        builderLoading: false,
-        builtCampaign: null,
-        prospectSearch: '',
-        prospectStageFilter: '',
-        showAddLead: false,
-        newLead: { name:'', company:'', title:'', email:'', linkedin_url:'' },
-        channelSetupKey: null,
-        crmPulling: false,
-        crmPullResult: '',
-
-        get activeChannelCount() {
-          return Object.values(this.channels).filter(c => c.active).length;
-        },
-
-        async init() {
-          await Promise.all([
-            this.loadStats(), this.loadChannels(), this.loadCampaigns(),
-            this.loadActivity(), this.loadCRMAdapters(), this.loadAIEmailStatus(),
-          ]);
-          this.loadDocs();
-          this.loadTasks();
-          this.initOration();
-          this.loading = false;
-          setInterval(() => this.loadStats(), 30000);
-        },
-
-        async loadStats() {
-          try {
-            const [stats, health, hot] = await Promise.all([
-              fetch('/api/stats').then(r=>r.json()),
-              fetch('/api/health').then(r=>r.json()),
-              fetch('/api/prospects/hot').then(r=>r.json()),
-            ]);
-            this.stats = stats;
-            this.loopRunning = health.loop?.running ?? false;
-            this.hotLeads = Array.isArray(hot) ? hot.slice(0,6) : [];
-          } catch {}
-        },
-
-        async loadChannels() {
-          try {
-            const data = await fetch('/api/channels/status').then(r=>r.json());
-            for (const [key, val] of Object.entries(data)) {
-              if (this.channels[key]) this.channels[key] = { ...this.channels[key], ...val };
-            }
-          } catch {}
-        },
-
-        async loadCampaigns() {
-          try { this.campaigns = await fetch('/api/campaigns').then(r=>r.json()); } catch {}
-        },
-
-        async loadActivity() {
-          try { this.activity = await fetch('/api/activity?limit=25').then(r=>r.json()); } catch {}
-        },
-
-        async loadCRMAdapters() {
-          try { this.crmAdapters = await fetch('/api/crm/adapters').then(r=>r.json()); } catch {}
-        },
-
-        async loadAIEmailStatus() {
-          try { this.aiEmailStatus = await fetch('/api/integrations/aiemail/status').then(r=>r.json()); } catch {}
-        },
-
-        async navigate(p) {
-          this.page = p;
-          if (p === 'leads') await this.loadLeads();
-          if (p === 'builder' && !this.builderId && this.builderMessages.length===0) await this.startBuilder();
-          if (p === 'aiemail') await this.loadAIEmailStatus();
-        },
-
-        pageTitle() {
-          const t = { dashboard:'Dashboard', campaigns:'Campaigns', leads:'Leads', builder:'AI Campaign Builder', channels:'Channels', crm:'CRM Sync', docs:'Docs & Tasks', meetings:'Meeting Intelligence', aiemail:'AI Email Platforms' };
-          return t[this.page] ?? 'BDRclaw';
-        },
-
-        pageSubtitle() {
-          if (this.page==='dashboard') return `${this.activeChannelCount} channel${this.activeChannelCount!==1?'s':''} active · ${this.stats.total_active??0} leads in pipeline`;
-          if (this.page==='builder') return 'Describe your offer — BDR Claude builds the campaign.';
-          if (this.page==='channels') return `${this.activeChannelCount} of ${Object.keys(this.channels).length} channels connected`;
-          if (this.page==='meetings') return 'Paste a transcript and get AI-powered insights + follow-up drafts';
-          if (this.page==='docs') return 'Scratchpad notes and kanban task board — stored locally';
-          if (this.page==='aiemail') return 'Push prospects to Instantly, Salesforge, and more';
-          return '';
-        },
-
-        // ── Builder ─────────────────────────────────────────────────────────────
-
-        async startBuilder() {
-          this.builderLoading = true;
-          try {
-            const data = await fetch('/api/campaigns/builder/start', {method:'POST'}).then(r=>r.json());
-            this.builderId = data.sessionId;
-            this.builderMessages = [{ role:'assistant', content:data.message }];
-          } catch {
-            this.builderMessages = [{ role:'assistant', content:"Hi! I'm BDR Claude. Tell me what product you're selling and who you're targeting." }];
-          }
-          this.builderLoading = false;
-        },
-
-        async sendBuilderMessage() {
-          if (!this.builderInput.trim() || this.builderLoading) return;
-          const msg = this.builderInput.trim();
-          this.builderInput = '';
-          this.builderMessages.push({ role:'user', content:msg });
-          this.builderLoading = true;
-          this.$nextTick(() => this.scrollChat());
-          try {
-            const data = await fetch('/api/campaigns/builder/chat', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ sessionId:this.builderId, message:msg }),
-            }).then(r=>r.json());
-            this.builderMessages.push({ role:'assistant', content:data.reply });
-            if (data.campaign) this.builtCampaign = data.campaign;
-            if (data.done) await this.loadCampaigns();
-          } catch {
-            this.builderMessages.push({ role:'assistant', content:'Sorry, I hit an error. Try again.' });
-          }
-          this.builderLoading = false;
-          this.$nextTick(() => this.scrollChat());
-        },
-
-        scrollChat() { const el=document.getElementById('chat-messages'); if(el) el.scrollTop=el.scrollHeight; },
-
-        resetBuilder() { this.builderId=null; this.builderMessages=[]; this.builtCampaign=null; this.startBuilder(); },
-
-        // ── Leads ───────────────────────────────────────────────────────────────
-
-        async loadLeads() {
-          try {
-            let url = '/api/prospects?limit=100';
-            if (this.prospectSearch) url = `/api/prospects?q=${encodeURIComponent(this.prospectSearch)}&limit=100`;
-            else if (this.prospectStageFilter) url = `/api/prospects?stage=${this.prospectStageFilter}&limit=100`;
-            this.prospects = await fetch(url).then(r=>r.json());
-          } catch {}
-        },
-
-        async addLead() {
-          if (!this.newLead.name || !this.newLead.company || !this.newLead.title) return;
-          try {
-            await fetch('/api/prospects', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(this.newLead) });
-            this.showAddLead = false;
-            this.newLead = { name:'', company:'', title:'', email:'', linkedin_url:'' };
-            await this.loadLeads(); await this.loadStats();
-          } catch {}
-        },
-
-        // ── Campaigns ───────────────────────────────────────────────────────────
-
-        async activateCampaign(id) {
-          await fetch(`/api/campaigns/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'active'})});
-          await this.loadCampaigns();
-        },
-
-        async pauseCampaign(id) {
-          await fetch(`/api/campaigns/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'paused'})});
-          await this.loadCampaigns();
-        },
-
-        // ── CRM ─────────────────────────────────────────────────────────────────
-
-        openChannelSetup(key) { this.channelSetupKey = key; },
-
-        async pullCRM() {
-          this.crmPulling = true; this.crmPullResult = '';
-          try {
-            const data = await fetch('/api/crm/pull', {method:'POST'}).then(r=>r.json());
-            this.crmPullResult = `Pulled ${data.count??0} contacts from CRM`;
-          } catch { this.crmPullResult = 'Pull failed'; }
-          this.crmPulling = false;
-        },
-
-        // ── Docs — Notes ────────────────────────────────────────────────────────
-
-        loadDocs() {
-          try { this.notes = JSON.parse(localStorage.getItem('bdrclaw_notes')||'[]'); } catch { this.notes=[]; }
-        },
-
-        saveDocs() { localStorage.setItem('bdrclaw_notes', JSON.stringify(this.notes)); },
-
-        newNote() {
-          const n = { id: Date.now().toString(), title:'', content:'', preview:'', updatedAt: new Date().toISOString() };
-          this.notes.unshift(n);
-          this.saveDocs();
-          this.selectNote(n.id);
-          this.docsTab = 'notes';
-        },
-
-        selectNote(id) {
-          this.currentNoteId = id;
-          const n = this.notes.find(x=>x.id===id);
-          if (n) { this.currentNoteTitle=n.title; this.currentNoteContent=n.content; }
-        },
-
-        saveCurrentNote() {
-          const n = this.notes.find(x=>x.id===this.currentNoteId);
-          if (!n) return;
-          n.title = this.currentNoteTitle;
-          n.content = this.currentNoteContent;
-          n.preview = this.currentNoteContent.slice(0,60).replace(/\n/g,' ');
-          n.updatedAt = new Date().toISOString();
-          this.saveDocs();
-        },
-
-        deleteCurrentNote() {
-          this.notes = this.notes.filter(n=>n.id!==this.currentNoteId);
-          this.saveDocs();
-          this.currentNoteId=null; this.currentNoteTitle=''; this.currentNoteContent='';
-        },
-
-        // ── Docs — Tasks (Kanban) ────────────────────────────────────────────────
-
-        loadTasks() {
-          try { this.tasks = JSON.parse(localStorage.getItem('bdrclaw_tasks')||'{"todo":[],"inProgress":[],"done":[]}'); } catch { this.tasks={todo:[],inProgress:[],done:[]}; }
-        },
-
-        saveTasks() { localStorage.setItem('bdrclaw_tasks', JSON.stringify(this.tasks)); },
-
-        addTask(col) {
-          if (!this.newTaskText.trim()) return;
-          this.tasks[col].push({ id:Date.now().toString(), text:this.newTaskText.trim() });
-          this.newTaskText = '';
-          this.saveTasks();
-        },
-
-        moveTask(id, from, to) {
-          const idx = this.tasks[from].findIndex(t=>t.id===id);
-          if (idx===-1) return;
-          const [task] = this.tasks[from].splice(idx,1);
-          this.tasks[to].push(task);
-          this.saveTasks();
-        },
-
-        deleteTask(id, col) {
-          this.tasks[col] = this.tasks[col].filter(t=>t.id!==id);
-          this.saveTasks();
-        },
-
-        // ── Meetings ────────────────────────────────────────────────────────────
-
-        async analyzeMeeting() {
-          if (!this.meetingTranscript.trim()) return;
-          this.meetingAnalyzing = true;
-          this.meetingAnalysis = null;
-          try {
-            this.meetingAnalysis = await fetch('/api/meetings/analyze', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ transcript:this.meetingTranscript, topic:this.meetingTopic, attendees:this.meetingAttendees, myRole:this.meetingMyRole }),
-            }).then(r=>r.json());
-          } catch { this.meetingAnalysis = null; }
-          this.meetingAnalyzing = false;
-        },
-
-        async loadOtterTranscripts() {
-          this.otterLoading = true;
-          try {
-            const data = await fetch('/api/otter/transcripts').then(r=>r.json());
-            this.otterTranscripts = data.transcripts ?? [];
-          } catch { this.otterTranscripts=[]; }
-          this.otterLoading = false;
-        },
-
-        copyDraft() {
-          const text = this.meetingDraftTab==='email'?this.meetingAnalysis?.emailDraft:this.meetingDraftTab==='sms'?this.meetingAnalysis?.smsDraft:this.meetingDraftTab==='telegram'?this.meetingAnalysis?.telegramDraft:this.meetingAnalysis?.linkedinMessage;
-          if (text) navigator.clipboard.writeText(text);
-        },
-
-        // ── AI Email ────────────────────────────────────────────────────────────
-
-        async syncInstantlyProspects() {
-          this.aiEmailLoading = true;
-          try {
-            const ps = this.prospects.map(p=>({ email:p.email??'', first_name:p.name.split(' ')[0], last_name:p.name.split(' ').slice(1).join(' '), company_name:p.company }));
-            await fetch('/api/integrations/instantly/sync', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prospects:ps})});
-          } catch {}
-          this.aiEmailLoading = false;
-        },
-
-        async syncSalesforgeProspects() {
-          this.aiEmailLoading = true;
-          try {
-            const cs = this.prospects.map(p=>({ email:p.email??'', firstName:p.name.split(' ')[0], lastName:p.name.split(' ').slice(1).join(' '), companyName:p.company, title:p.title }));
-            await fetch('/api/integrations/salesforge/sync', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contacts:cs})});
-          } catch {}
-          this.aiEmailLoading = false;
-        },
-
-        // ── Oration ─────────────────────────────────────────────────────────────
-
-        initOration() {
-          this.orationSpeechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-        },
-
-        toggleOration() {
-          if (this.orationListening) { this.stopListening(); return; }
-          this.orationOpen = true;
-          if (this.orationSpeechSupported) this.startListening();
-        },
-
-        startListening() {
-          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (!SR) return;
-          this._recognition = new SR();
-          this._recognition.lang = 'en-US';
-          this._recognition.interimResults = false;
-          this._recognition.onresult = (e) => {
-            this.orationTranscript = e.results[0][0].transcript;
-            this.orationListening = false;
-            this.sendOration();
-          };
-          this._recognition.onend = () => { this.orationListening = false; };
-          this._recognition.start();
-          this.orationListening = true;
-        },
-
-        stopListening() {
-          if (this._recognition) { this._recognition.stop(); this._recognition=null; }
-          this.orationListening = false;
-        },
-
-        async sendOration() {
-          if (!this.orationTranscript.trim() || this.orationLoading) return;
-          this.orationLoading = true;
-          this.orationResponse = '';
-          try {
-            const data = await fetch('/api/oration', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ text:this.orationTranscript }),
-            }).then(r=>r.json());
-            this.orationResponse = data.response;
-            if (data.speak && window.speechSynthesis) {
-              const utt = new SpeechSynthesisUtterance(data.response);
-              window.speechSynthesis.speak(utt);
-            }
-            if (data.action?.type === 'navigate') {
-              const dest = data.action.payload?.page;
-              if (dest) this.navigate(dest);
-            }
-          } catch { this.orationResponse = 'Error processing your request.'; }
-          this.orationLoading = false;
-        },
-
-        // ── Logos ────────────────────────────────────────────────────────────────
-
-        logo(key) {
-          const logos = {
-            email: `<svg viewBox="0 0 24 24" class="w-7 h-7"><path fill="#EA4335" d="M21.8 7.5l-9.8 6.5L2.2 7.5V18a1 1 0 001 1h17.6a1 1 0 001-1V7.5z"/><path fill="#EA4335" d="M21.8 6H2.2l9.8 6.5L21.8 6z" opacity=".7"/></svg>`,
-            linkedin: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="4" fill="#0A66C2"/><path fill="white" d="M7 9h-2v8h2V9zm-1-3a1.17 1.17 0 110 2.34A1.17 1.17 0 016 6zm12 11h-2v-4c0-1-.4-1.7-1.3-1.7-.9 0-1.4.7-1.4 1.7v4h-2V9h2v1.1c.4-.7 1.2-1.1 2.1-1.1C16.8 9 18 10.2 18 12.4V17z"/></svg>`,
-            sms: `<svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="#F22F46" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`,
-            whatsapp: `<svg viewBox="0 0 24 24" class="w-7 h-7"><circle cx="12" cy="12" r="12" fill="#25D366"/><path fill="white" d="M17.5 14.4c-.3-.1-1.6-.8-1.9-.9-.3-.1-.5-.1-.7.1-.2.3-.8.9-.9 1.1-.2.2-.3.2-.6.1-.3-.2-1.2-.4-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.2-.5 0-.2-.1-.4-.2-.5l-1-2.3c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.2-.9.9-.9 2.1 0 1.2.9 2.4 1 2.6.2.2 1.7 2.6 4.1 3.6.6.2 1 .4 1.4.5.6.2 1.1.2 1.5.1.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.2-.1-.6-.2z"/></svg>`,
-            telegram: `<svg viewBox="0 0 24 24" class="w-7 h-7"><circle cx="12" cy="12" r="12" fill="#24A1DE"/><path fill="white" d="M5.5 11.5l12.7-4.9c.6-.2 1.1.1.9.7L17 17.3c-.1.5-.5.7-.9.4l-3-2.3-1.4 1.4c-.2.2-.4.2-.5 0l-.4-2.8L5.5 12c-.5-.2-.5-.5 0-.5z"/></svg>`,
-            twitter: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="4" fill="#000"/><path fill="white" d="M17.5 4h2.5l-5.4 6.2L21 20h-5l-3.9-5.1L7.5 20H5l5.8-6.6L3 4h5.1l3.5 4.6L17.5 4zm-.9 14.4h1.4L7.5 5.4H6l10.6 13z"/></svg>`,
-            instagram: `<svg viewBox="0 0 24 24" class="w-7 h-7"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f09433"/><stop offset="25%" stop-color="#e6683c"/><stop offset="50%" stop-color="#dc2743"/><stop offset="75%" stop-color="#cc2366"/><stop offset="100%" stop-color="#bc1888"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig)"/><rect x="7" y="7" width="10" height="10" rx="3" stroke="white" stroke-width="1.5" fill="none"/><circle cx="12" cy="12" r="2.5" stroke="white" stroke-width="1.5" fill="none"/><circle cx="16.5" cy="7.5" r="1" fill="white"/></svg>`,
-            zoom: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="4" fill="#2D8CFF"/><path fill="white" d="M4 9a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V9zm12 1.5l4-2.5v8l-4-2.5V10.5z"/></svg>`,
-            meet: `<svg viewBox="0 0 24 24" class="w-7 h-7"><path fill="#00897B" d="M4 8a4 4 0 014-4h8a4 4 0 014 4v8a4 4 0 01-4 4H8a4 4 0 01-4-4V8z"/><path fill="white" d="M8 9l4 3 4-3v6l-4-3-4 3V9z"/></svg>`,
-            teams: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="4" fill="#6264A7"/><path fill="white" d="M14 8a2 2 0 11-4 0 2 2 0 014 0zm-6 3h8v1.5a4 4 0 01-4 4 4 4 0 01-4-4V11zm9-2.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 1.5h2v1a3 3 0 01-2 2.8V10z"/></svg>`,
-            skype: `<svg viewBox="0 0 24 24" class="w-7 h-7"><circle cx="12" cy="12" r="12" fill="#00AFF0"/><path fill="white" d="M17.8 13.6c.1-.5.2-1 .2-1.6 0-3.3-2.7-6-6-6-.6 0-1.2.1-1.7.2C9.8 6 9.2 5.8 8.6 5.8 7 5.8 5.8 7 5.8 8.6c0 .6.2 1.2.4 1.7-.2.5-.2 1-.2 1.6 0 3.3 2.7 6 6 6 .6 0 1.2-.1 1.6-.2.5.3 1.1.4 1.7.4 1.6 0 2.8-1.2 2.8-2.8 0-.6-.1-1.2-.4-1.7zm-5.8 1.4c-1.9 0-2.8-.9-2.8-1.6 0-.4.3-.7.7-.7.9 0 .7 1.2 2.1 1.2.8 0 1.2-.4 1.2-.8 0-.3-.1-.5-.8-.7l-1.6-.4c-1.3-.3-1.5-1-1.5-1.7 0-1.4 1.3-1.9 2.6-1.9 1.2 0 2.6.6 2.6 1.5 0 .4-.3.7-.7.7-.8 0-.6-1-2-1-.7 0-1 .3-1 .7 0 .3.2.5.8.6l1.5.4c1.3.3 1.6 1 1.6 1.7 0 1.2-1 2-2.7 2z"/></svg>`,
-            granola: `<svg viewBox="0 0 24 24" class="w-7 h-7" fill="none"><circle cx="12" cy="12" r="10" fill="#7C3AED"/><path fill="white" d="M8 8h8v2H8zm0 3h8v2H8zm0 3h5v2H8z"/></svg>`,
-            otter: `<svg viewBox="0 0 24 24" class="w-7 h-7" fill="none"><circle cx="12" cy="12" r="10" fill="#0EA5E9"/><path fill="white" d="M8 10a4 4 0 018 0v2a4 4 0 01-8 0v-2zm2 0v2a2 2 0 004 0v-2a2 2 0 00-4 0zm-1 8c0-1.1 1.3-2 3-2s3 .9 3 2H9z"/></svg>`,
-            instantly: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="5" fill="#FF6B35"/><path fill="white" d="M13 4l-8 10h7l-2 6 9-10h-7l1-6z"/></svg>`,
-            salesforge: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="5" fill="#8B5CF6"/><path fill="white" d="M7 14c0-1.7 1.3-3 3-3h4a1 1 0 000-2H9V7h5a3 3 0 010 6h-4a1 1 0 000 2h6v2H10a3 3 0 01-3-3z"/></svg>`,
-            hubspot: `<svg viewBox="0 0 24 24" class="w-7 h-7"><circle cx="12" cy="12" r="12" fill="#FF7A59"/><path fill="white" d="M13.5 8.5V6.3a1.5 1.5 0 10-3 0V8.5A4 4 0 008 12a4 4 0 002.5 3.7V18h3v-2.3A4 4 0 0016 12a4 4 0 00-2.5-3.5z"/></svg>`,
-            salesforce: `<svg viewBox="0 0 24 24" class="w-7 h-7"><ellipse cx="12" cy="12" rx="11" ry="8" fill="#00A1E0"/><path fill="white" d="M8.5 10h2v4h-2zm2.5-2a1 1 0 110-2 1 1 0 010 2zm2.5 2h2v4h-2zm3-1h2v5h-2z"/></svg>`,
-            monday: `<svg viewBox="0 0 24 24" class="w-7 h-7"><rect width="24" height="24" rx="5" fill="#FF3D57"/><ellipse cx="7" cy="12" rx="2.5" ry="3.5" fill="#FF7F00"/><ellipse cx="12" cy="12" rx="2.5" ry="3.5" fill="#FFCB00"/><ellipse cx="17" cy="12" rx="2.5" ry="3.5" fill="#00CA72"/></svg>`,
-          };
-          return logos[key] || `<svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="#71717a" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>`;
-        },
-
-        // ── Utilities ────────────────────────────────────────────────────────────
-
-        timeAgo(ts) {
-          if (!ts) return '';
-          const d = Date.now() - new Date(ts).getTime();
-          if (d < 60000) return 'just now';
-          if (d < 3600000) return Math.floor(d/60000)+'m ago';
-          if (d < 86400000) return Math.floor(d/3600000)+'h ago';
-          return Math.floor(d/86400000)+'d ago';
-        },
-
-        activityLabel(item) {
-          if (item.type==='hot_lead') return '🔥 Replied as interested';
-          if (item.type==='replied') return 'Replied: '+(item.classification??'');
-          if (item.type==='blocked') return 'Message blocked by quality gate';
-          return 'Message sent';
-        },
-
-        stageColor(stage) {
-          const m = { interested:'bg-orange-500/15 text-orange-400 border-orange-500/20', replied:'bg-blue-500/15 text-blue-400 border-blue-500/20', follow_up:'bg-amber-500/15 text-amber-400 border-amber-500/20', outreach_sent:'bg-indigo-500/15 text-indigo-400 border-indigo-500/20', identified:'bg-zinc-800 text-zinc-400 border-zinc-700', meeting_booked:'bg-emerald-500/15 text-emerald-400 border-emerald-500/20', not_interested:'bg-red-500/15 text-red-400 border-red-500/20', unsubscribed:'bg-zinc-800 text-zinc-600 border-zinc-700' };
-          return m[stage] ?? 'bg-zinc-800 text-zinc-500 border-zinc-700';
-        },
-
-        stageLabel(stage) {
-          const m = { interested:'🔥 Hot Lead', replied:'Replied', follow_up:'Follow Up', outreach_sent:'Contacted', identified:'New', meeting_booked:'📅 Meeting Set', not_interested:'Not Interested', unsubscribed:'Unsubscribed' };
-          return m[stage] ?? stage;
-        },
-      };
-    }
-  </script>
 </body>
 </html>

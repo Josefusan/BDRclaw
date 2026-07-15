@@ -1,0 +1,57 @@
+/* BDRclaw dashboard — custom styles beyond Tailwind CDN */
+
+[x-cloak] { display: none !important; }
+
+.gradient-text {
+  background: linear-gradient(135deg, #f97316, #fb923c, #fdba74);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Chat bubbles */
+.chat-bubble-user { background: linear-gradient(135deg, #f97316, #fb923c); color: #fff; border-radius: 16px 16px 4px 16px; }
+.chat-bubble-ai   { background: #27272a; color: #e4e4e7; border-radius: 16px 16px 16px 4px; }
+
+/* Sidebar */
+.sidebar-link { transition: background 0.15s ease, color 0.15s ease; }
+.sidebar-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.sidebar-link.active { background: rgba(249,115,22,0.15); color: #fb923c; }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+
+/* Loading skeletons */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #27272a;
+  border-radius: 6px;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  animation: shimmer 1.6s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+/* Toasts */
+.toast-enter { animation: toast-in 0.2s ease-out; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Numeric alignment in tables only (proportional elsewhere by default) */
+.tabular { font-variant-numeric: tabular-nums; }
+
+.kanban-col { min-height: 200px; }
+.oration-panel { backdrop-filter: blur(20px); }
+
+/* Focus ring consistency for keyboard users */
+.focus-ring:focus-visible { outline: 2px solid rgba(249,115,22,0.6); outline-offset: 2px; }

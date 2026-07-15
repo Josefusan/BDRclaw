@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-06-24T18:30:00Z | **Iteration:** v1.1 — Docs, Meetings, Oration, AI Email platforms, brand logos
+> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-07-14T21:00:00Z | **Iteration:** v1.2 — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -118,6 +118,31 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-40: The running service on `bdrclaw.dev` responds to `GET /api/health` with `{ status: "ok" }`.
 - [ ] Anti: ISC-41: No `.env` file is present in the built Docker image — secrets are env vars only.
 
+### Dashboard v2 — SaaS-Grade UI (added 2026-07-14)
+- [ ] ISC-42: `GET /` serves the SPA and every nav page (Overview, Prospects, Campaigns, Channels, Activity, Settings) renders without browser console errors.
+- [ ] ISC-43: Every dashboard page shows a meaningful empty state with a call-to-action when its data set is empty — no blank panels or spinner deadlocks.
+- [ ] ISC-44: The Overview page renders pipeline funnel counts that match `GET /api/stats` `by_stage` values.
+- [ ] ISC-45: The Prospects page supports search, stage filter, add-prospect, and CSV import against the existing `/api/prospects*` endpoints.
+- [ ] ISC-46: The campaign builder conversation is reachable from the dashboard UI and drives `/api/campaigns/builder/start` + `/chat` to a `{ done: true }` campaign.
+- [ ] ISC-47: The Channels page shows, per channel, configured-vs-verified status and daily-limit meters sourced from `GET /api/channels/status` — env-var presence alone is never displayed as "working".
+- [ ] ISC-48: The Activity page renders real `bdr_touches` rows including `direction` and `blocked` status.
+- [ ] ISC-49: The Settings page lists, per channel, which required env vars are missing to activate it.
+- [ ] Anti: ISC-50: No dashboard page requires an external build step — static assets in `public/` served by the Node `http` server only.
+
+### Runtime Hardening (added 2026-07-14)
+- [ ] ISC-51: `npm run brain` runs standalone without crashing — it initializes the BDR database and loads channels before `runCycle()`.
+- [ ] ISC-52: The orchestrator boots and serves the dashboard + BDR loop on a machine with no Docker daemon — container runtime degrades gracefully (agent containers are only required for conversational group-chat sessions).
+- [ ] ISC-53: `GET /api/channels/status` returns `{ channel, configured, verified, dailyLimit, usedToday }` for all seven channels.
+- [ ] Anti: ISC-54: A machine without Docker never sees `FATAL` from `ensureContainerSystemRunning` — degraded mode is logged, not fatal.
+
+### Channel Completion — LinkedIn / Twitter / SMS / WhatsApp (added 2026-07-14)
+- [ ] ISC-55: The SMS send path enforces the TCPA 2-unsolicited-touch cap and the suppression list, verified by unit tests.
+- [ ] ISC-56: WhatsApp outbound is warm-only — a send to a prospect with zero inbound WhatsApp touches is refused, verified by unit test.
+- [ ] ISC-57: The LinkedIn DM sender is code-complete with ≤20 connection-requests/day and ≤50 DMs/day caps enforced; live send is [DEFERRED-VERIFY] pending an authenticated LinkedIn session.
+- [ ] ISC-58: Twitter/X DM outbound is warm/reply-only — cold DM attempts are refused; warm replies send via `twitter-api-v2` when creds present.
+- [ ] Anti: ISC-59: No channel's send path bypasses the quality gate or the suppression check — both outbound entry points (`processEnrollment`, `dispatchAction`) enforce both.
+- [ ] Anti: ISC-60: A channel with absent env credentials performs zero network calls and does not register — self-disable is clean and logged.
+
 ---
 
 ## Test Strategy
@@ -172,6 +197,12 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-07-08** — Inbound idempotency via a `bdr_processed_inbound(message_id)` table + `markInboundProcessed()` (INSERT OR IGNORE): processReply runs exactly once per message id, so boot re-scans, Twilio webhook retries, and Telegram long-poll redelivery cannot replay history.
 - **2026-07-08** — Deleted `src/campaign-runner.ts` (orphaned — `runCampaignTick` never called). The agentic loop is the single live send path; `personalize` lived there but was unused by the loop.
 - **2026-07-08** — Channel scope decision (Joseph): cold outreach = Email + SMS + LinkedIn (LinkedIn via self-hosted Patchright); X/Twitter and WhatsApp are warm/reply-only (X cold DMs are policy-banned + mostly undeliverable; Meta paused US marketing templates since Apr 2025). See `docs/MVP-PLAN.md`. This narrows — but does not remove — the "Playwright only for LinkedIn" constraint; Patchright is a drop-in Playwright fork.
+
+- **2026-07-14** — Compliance branch `worktree-agent-afa8559908df401d8` reviewed and merged to main: CAN-SPAM footer + List-Unsubscribe, `/unsubscribe` → `bdr_suppression`, Twilio signature validation, `/privacy` + `/terms`. Suite 256/256, typecheck clean post-merge.
+- **2026-07-14** — Dashboard v2 + channel completion executed by three parallel Fable subagents with strict file ownership (Backend: `web-ui.ts`/`index.ts`/`bdr-brain.ts`/`container-runtime.ts`; Frontend: `public/**`; Channels: `src/channels/**` + `*-bdr-actions.ts`). Reason: Joseph's explicit directive ("three subagents of Fable"); ownership partitioning replaces worktree isolation to avoid a 3-way merge.
+- **2026-07-14** — Forge auto-include (E4 coding) and Cato cross-vendor audit are environmentally blocked: codex routes to a tailnet Ollama host and Tailscale is logged out (documented in HANDOFF gotchas). Show-your-math: delegation floor met with 3× Fable agents; Cato audit deferred with follow-up "run Cato after `tailscale up`".
+- **2026-07-14** — EnterPlanMode skipped despite E4: Joseph's message is an explicit execute directive ("Please finish this"), not a planning request.
+- **2026-07-14** — ISC floor (E4 ≥128) not inflated to quota: project ISA carries 60 real criteria. Show-your-math: padding to 128 would violate the granularity-first rule that criteria describe the actual ideal state.
 
 ---
 
