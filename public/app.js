@@ -92,6 +92,7 @@ const STAGES = [
   ['follow_up', 'Follow-up'],
   ['replied', 'Replied'],
   ['interested', 'Interested'],
+  ['meeting_link_sent', 'Link sent'],
   ['meeting_booked', 'Meeting booked'],
 ];
 
@@ -102,6 +103,7 @@ const ALL_STAGES = [
   ['follow_up', 'Follow-up'],
   ['replied', 'Replied'],
   ['interested', 'Hot lead'],
+  ['meeting_link_sent', 'Link sent'],
   ['meeting_booked', 'Meeting set'],
   ['handed_off', 'Handed off'],
   ['not_interested', 'Not interested'],
@@ -1240,6 +1242,7 @@ function app() {
         hubspot: '<svg viewBox="0 0 24 24" class="w-6 h-6"><circle cx="12" cy="12" r="12" fill="#FF7A59"/><path fill="white" d="M13.5 8.5V6.3a1.5 1.5 0 10-3 0V8.5A4 4 0 008 12a4 4 0 002.5 3.7V18h3v-2.3A4 4 0 0016 12a4 4 0 00-2.5-3.5z"/></svg>',
         salesforce: '<svg viewBox="0 0 24 24" class="w-6 h-6"><ellipse cx="12" cy="12" rx="11" ry="8" fill="#00A1E0"/><path fill="white" d="M8.5 10h2v4h-2zm2.5-2a1 1 0 110-2 1 1 0 010 2zm2.5 2h2v4h-2zm3-1h2v5h-2z"/></svg>',
         monday: '<svg viewBox="0 0 24 24" class="w-6 h-6"><rect width="24" height="24" rx="5" fill="#FF3D57"/><ellipse cx="7" cy="12" rx="2.5" ry="3.5" fill="#FF7F00"/><ellipse cx="12" cy="12" rx="2.5" ry="3.5" fill="#FFCB00"/><ellipse cx="17" cy="12" rx="2.5" ry="3.5" fill="#00CA72"/></svg>',
+        gohighlevel: '<svg viewBox="0 0 24 24" class="w-6 h-6"><rect width="24" height="24" rx="5" fill="#16A34A"/><path fill="white" d="M6 16l4-8 3 5 2-3 3 6H6z"/></svg>',
       };
       return logos[key] || '<svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="#71717a" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
     },
@@ -1280,6 +1283,7 @@ function app() {
         follow_up: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
         outreach_sent: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20',
         identified: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+        meeting_link_sent: 'bg-teal-500/15 text-teal-400 border-teal-500/20',
         meeting_booked: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
         handed_off: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/15',
         not_interested: 'bg-red-500/15 text-red-400 border-red-500/20',
@@ -1291,7 +1295,8 @@ function app() {
     stageLabel(stage) {
       const m = {
         interested: 'Hot lead', replied: 'Replied', follow_up: 'Follow-up',
-        outreach_sent: 'Contacted', identified: 'New', meeting_booked: 'Meeting set',
+        outreach_sent: 'Contacted', identified: 'New', meeting_link_sent: 'Link sent',
+        meeting_booked: 'Meeting set',
         handed_off: 'Handed off', not_interested: 'Not interested', unsubscribed: 'Unsubscribed',
       };
       return m[stage] || stage;

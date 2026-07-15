@@ -310,6 +310,7 @@
               <option value="follow_up">Follow-up</option>
               <option value="replied">Replied</option>
               <option value="interested">Hot lead</option>
+              <option value="meeting_link_sent">Link sent</option>
               <option value="meeting_booked">Meeting set</option>
               <option value="handed_off">Handed off</option>
               <option value="not_interested">Not interested</option>
@@ -779,9 +780,16 @@
         <!-- ══ CRM (carried over) ══ -->
         <div x-show="page==='crm'" class="p-8 max-w-4xl mx-auto">
           <div x-show="crmAdapters.length===0" class="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-5 text-sm text-zinc-500">
-            No CRM adapters connected. Set <code class="bg-zinc-800 text-orange-400 px-1 rounded">HUBSPOT_ACCESS_TOKEN</code>, <code class="bg-zinc-800 text-orange-400 px-1 rounded">SALESFORCE_*</code>, or <code class="bg-zinc-800 text-orange-400 px-1 rounded">MONDAY_API_KEY</code> to activate.
+            No CRM adapters connected. Set <code class="bg-zinc-800 text-orange-400 px-1 rounded">GHL_API_KEY</code> + <code class="bg-zinc-800 text-orange-400 px-1 rounded">GHL_LOCATION_ID</code>, <code class="bg-zinc-800 text-orange-400 px-1 rounded">HUBSPOT_ACCESS_TOKEN</code>, <code class="bg-zinc-800 text-orange-400 px-1 rounded">SALESFORCE_*</code>, or <code class="bg-zinc-800 text-orange-400 px-1 rounded">MONDAY_API_KEY</code> to activate.
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-3">
+              <div class="w-14 h-14 rounded-xl bg-emerald-500/10 flex items-center justify-center" x-html="logo('gohighlevel')"></div>
+              <div class="text-center">
+                <p class="font-semibold text-zinc-200">GoHighLevel</p>
+                <p class="text-xs mt-0.5" :class="crmAdapters.find(a=>a.name==='gohighlevel')?'text-emerald-400':'text-zinc-600'" x-text="crmAdapters.find(a=>a.name==='gohighlevel')?'Connected':'Set GHL_API_KEY + GHL_LOCATION_ID'"></p>
+              </div>
+            </div>
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-3">
               <div class="w-14 h-14 rounded-xl bg-orange-500/10 flex items-center justify-center" x-html="logo('hubspot')"></div>
               <div class="text-center">

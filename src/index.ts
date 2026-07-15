@@ -681,6 +681,7 @@ async function main(): Promise<void> {
     if (channel.name === 'linkedin') g.__bdrclaw_linkedin_channel = channel;
     if (channel.name === 'telegram') g.__bdrclaw_telegram_channel = channel;
     if (channel.name === 'sms') g.__bdrclaw_sms_channel = channel;
+    if (channel.name === 'whatsapp') g.__bdrclaw_whatsapp_channel = channel;
   }
   if (channels.length === 0) {
     logger.fatal('No channels connected');

@@ -283,7 +283,9 @@ registerActionHandler('send_meeting_link', async (prospect: BDRProspect) => {
       sent_at: new Date().toISOString(),
     });
 
-    updateProspectStage(prospect.id, 'meeting_booked');
+    // Link sent ≠ meeting booked. Only the Calendly webhook (invitee.created)
+    // may set 'meeting_booked' — see ISA ISC-81.
+    updateProspectStage(prospect.id, 'meeting_link_sent');
     logger.info({ prospectId: prospect.id }, 'Meeting link sent');
   } catch (err) {
     logger.error(

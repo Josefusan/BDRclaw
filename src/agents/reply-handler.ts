@@ -280,7 +280,7 @@ export async function processReply(
 
 // ── Hot-lead notification ─────────────────────────────────────────────────────
 
-function fireHotLeadNotification(prospect: BDRProspect): void {
+export function fireHotLeadNotification(prospect: BDRProspect): void {
   logger.info(
     { prospectId: prospect.id, name: prospect.name, company: prospect.company },
     '🔥 HOT LEAD — prospect replied as interested',

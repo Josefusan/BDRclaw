@@ -31,6 +31,7 @@ const DEFAULT_STAGE_MAP: Record<ProspectStage, string> = {
   follow_up: 'qualifiedtobuy',
   replied: 'presentationscheduled',
   interested: 'decisionmakerboughtin',
+  meeting_link_sent: 'decisionmakerboughtin',
   meeting_booked: 'contractsent',
   handed_off: 'closedwon',
   not_interested: 'closedlost',

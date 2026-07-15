@@ -35,6 +35,7 @@ import {
   getBuilderSession,
   getHotProspects,
   getPipelineStats,
+  getProspectByContact,
   getProspectById,
   getRecentActivity,
   getRecentBrainRuns,
@@ -44,6 +45,8 @@ import {
   getTouchesForProspect,
   isProspectSuppressed,
   listCampaigns,
+  markInboundProcessed,
+  recordTouch,
   searchProspects,
   SUPPRESSION_CHANNELS,
   updateProspectStage,
@@ -64,6 +67,7 @@ import {
   startAgenticLoop,
   stopAgenticLoop,
 } from './agents/loop.js';
+import { fireHotLeadNotification } from './agents/reply-handler.js';
 import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
@@ -280,6 +284,28 @@ export function route(
     return;
   }
 
+  // CSRF guard: browsers attach an Origin header to every cross-origin (and
+  // same-origin) POST/PATCH. A mismatched Origin means a foreign web page is
+  // driving this API from the operator's browser — reject it. Server-to-server
+  // callers (Calendly, Twilio, mail providers' one-click unsubscribe) send no
+  // Origin header and pass through.
+  if (method === 'POST' || method === 'PATCH') {
+    const origin = req.headers.origin;
+    if (origin) {
+      let originHost: string | null = null;
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        originHost = null;
+      }
+      if (!originHost || originHost !== req.headers.host) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Cross-origin request rejected' }));
+        return;
+      }
+    }
+  }
+
   // Public compliance pages (CAN-SPAM opt-out). Handled before static files so
   // /unsubscribe is a real endpoint, not a 404 or SPA fallback.
   if (pathname === '/unsubscribe') {
@@ -451,6 +477,90 @@ function handleApi(
         uptime: process.uptime(),
         ts: new Date().toISOString(),
         loop: getLoopStatus(),
+      });
+      return;
+    }
+
+    // ── Calendly booking webhook (ISC-81/82) ─────────────────────────────────
+    // The ONLY writer of stage 'meeting_booked'. A link send is not a booking;
+    // only Calendly's invitee.created event confirms one.
+
+    if (method === 'POST' && pathname === '/api/webhooks/calendly') {
+      readBody(req, (body) => {
+        try {
+          const signingKey = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
+          if (signingKey) {
+            const sigHeader = String(
+              req.headers['calendly-webhook-signature'] ?? '',
+            );
+            const t = /(?:^|,)t=([^,]+)/.exec(sigHeader)?.[1];
+            const v1 = /(?:^|,)v1=([^,]+)/.exec(sigHeader)?.[1];
+            const expected = t
+              ? crypto
+                  .createHmac('sha256', signingKey)
+                  .update(`${t}.${body}`)
+                  .digest('hex')
+              : null;
+            if (!v1 || !expected || v1 !== expected) {
+              logger.warn('Calendly webhook signature rejected');
+              res.writeHead(401);
+              res.end(JSON.stringify({ error: 'Invalid signature' }));
+              return;
+            }
+          }
+
+          const data = JSON.parse(body) as {
+            event?: string;
+            payload?: {
+              uri?: string;
+              email?: string;
+              name?: string;
+              scheduled_event?: { start_time?: string; uri?: string };
+            };
+          };
+          if (data.event !== 'invitee.created') {
+            json(res, { ok: true, ignored: data.event ?? 'unknown' });
+            return;
+          }
+          const email = data.payload?.email?.trim().toLowerCase();
+          if (!email) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'payload.email is required' }));
+            return;
+          }
+          // Idempotency: Calendly retries on non-2xx; the invitee URI is
+          // unique per booking.
+          const eventId = data.payload?.uri ?? `calendly:${email}`;
+          if (!markInboundProcessed(eventId)) {
+            json(res, { ok: true, duplicate: true });
+            return;
+          }
+          const prospect = getProspectByContact('email', email);
+          if (!prospect) {
+            logger.warn({ email }, 'Calendly booking for unknown prospect');
+            json(res, { ok: true, matched: false });
+            return;
+          }
+          const startTime = data.payload?.scheduled_event?.start_time;
+          recordTouch({
+            id: crypto.randomUUID(),
+            prospect_id: prospect.id,
+            channel: 'email',
+            direction: 'inbound',
+            content: `Calendly booking confirmed${startTime ? ` for ${startTime}` : ''}`,
+            status: 'replied',
+            sent_at: new Date().toISOString(),
+          });
+          updateProspectStage(prospect.id, 'meeting_booked');
+          fireHotLeadNotification(prospect);
+          logger.info(
+            { prospectId: prospect.id, startTime },
+            'Meeting booked via Calendly webhook',
+          );
+          json(res, { ok: true, matched: true, prospectId: prospect.id });
+        } catch (err) {
+          internalError(res, err, 'Calendly webhook error');
+        }
       });
       return;
     }
@@ -1563,6 +1673,7 @@ body {
 .stage-pill.replied       { background: #5b21b6; color: #ddd6fe; }
 .stage-pill.interested    { background: #7c3aed; color: #ede9fe; }
 .stage-pill.meeting_booked { background: #065f46; color: #6ee7b7; }
+.stage-pill.meeting_link_sent { background: #14352e; color: #34d399; }
 .stage-pill.handed_off    { background: #1c3a2a; color: #4ade80; }
 .stage-pill.not_interested { background: #1c1c2a; color: var(--muted); }
 .stage-pill.unsubscribed  { background: #1c1c2a; color: var(--muted); }
@@ -1877,6 +1988,7 @@ const STAGE_LABELS = {
   replied: 'Replied',
   interested: 'Interested',
   meeting_booked: 'Meeting Booked',
+  meeting_link_sent: 'Link Sent',
   handed_off: 'Handed Off',
   not_interested: 'Not Interested',
   unsubscribed: 'Unsubscribed',

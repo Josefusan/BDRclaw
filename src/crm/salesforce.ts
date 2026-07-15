@@ -31,6 +31,7 @@ const LEAD_STATUS_MAP: Record<ProspectStage, string> = {
   follow_up: 'Working',
   replied: 'Working',
   interested: 'Working',
+  meeting_link_sent: 'Working',
   meeting_booked: 'Closed - Converted',
   handed_off: 'Closed - Converted',
   not_interested: 'Closed - Not Converted',

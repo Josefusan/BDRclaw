@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-07-14T21:00:00Z | **Iteration:** v1.3 — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
+> **Tier:** E4 | **Status:** BUILD (resume 2026-07-15) | **Updated:** 2026-07-15T13:35:00Z | **Iteration:** v1.4 — booking detection + session-resume verification (ISC-80..84) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -167,6 +167,13 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-72: A GoHighLevel adapter (`src/crm/gohighlevel.ts`) self-registers when `GHL_API_KEY` + `GHL_LOCATION_ID` are present, pushes stage changes as contact upsert + tag, and is unit-tested with a mocked client.
 - [ ] ISC-73: Anti: with GHL env absent, zero GoHighLevel network calls occur and the adapter does not register.
 
+### Booking Detection — the last link (added 2026-07-15, session resume)
+- [ ] ISC-80: Sending a meeting link never sets `meeting_booked` — the email `send_meeting_link` path leaves the prospect at `interested` like the reply-handler path; unit test asserts stage after link send.
+- [ ] ISC-81: `meeting_booked` has exactly one writer in the codebase — the Calendly webhook handler; a grep probe over `src/` finds no other call site that sets the stage. *(refined per advisor 2026-07-15: reply-classification booking detection dropped — text intent is not a booking.)*
+- [ ] ISC-82: `POST /api/webhooks/calendly` matches the invitee email to a prospect, sets `meeting_booked`, records an inbound touch, and fires the closer notification; unit-tested with a synthetic `invitee.created` payload; live probe [DEFERRED-VERIFY] pending public deploy (same blocker as ISC-31/32).
+- [ ] ISC-83: Anti: booking-detection changes land with the full suite green and typecheck 0 — no regression to the 328-test baseline.
+- [ ] ISC-84: The dashboard funnel, stage pills, and stats render the new `meeting_link_sent` stage without falling into an unknown-stage code path.
+
 ### War Room Operations (added 2026-07-15)
 - [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph.
 - [ ] ISC-76: Anti: the loop never marks an ISC passed without tool evidence, and never re-litigates decisions recorded in `## Decisions`.
@@ -236,6 +243,8 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-07-15** — E5 Interview-before-BUILD gate waived (show-your-math): principal issued an execute directive and is not available for interactive interview; the war-room panel + prior handoffs stand in as elicitation. CheckCompleteness run instead.
 - **2026-07-15** — Forge auto-include and Cato remain environmentally blocked (Tailscale logged out); fleet is 3× Fable + sonnet panel per principal's standing "Fable subagents" directive.
 - **2026-07-15** — GH Pages build "errored" root-caused to Jekyll processing repo files containing `{{ }}`; fix is `.nojekyll` (landing agent owns). bdrclaw.dev DNS nonexistent — Joseph-blocked; exact records: A @ → 185.199.108.153/109/110/111, CNAME www → josefusan.github.io.
+- **2026-07-15 (session resume)** — Booking detection mechanism decided per advisor: the Calendly `invitee.created` webhook is the ONLY writer of `meeting_booked`; the email `send_meeting_link` path writes the new intermediate stage `meeting_link_sent` (was wrongly writing `meeting_booked` at link-send — the flagship metric counted link-sends). Reply-classification booking detection REJECTED: text intent ("I'll grab a slot") is not a booking; a false positive silently drops the prospect out of follow-up and loses the meeting — worse than the bug it replaces because it feels correct. Do not later "fix" booking detection by making the reply handler authoritative.
+- **2026-07-15 (session resume)** — EnterPlanMode skipped at E4: "we need to finish it" is an execute directive; session is autonomous. Forge/Cato remain environmentally blocked (`tailscale status` → "Logged out."); delegation floor met with code-reviewer + Explore Fable agents on the 4 unreviewed lost-session commits.
 
 
 ---

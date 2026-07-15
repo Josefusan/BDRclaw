@@ -7,6 +7,7 @@ export type ProspectStage =
   | 'follow_up'
   | 'replied'
   | 'interested'
+  | 'meeting_link_sent'
   | 'meeting_booked'
   | 'handed_off'
   | 'not_interested'
@@ -18,6 +19,7 @@ export const PROSPECT_STAGES: ProspectStage[] = [
   'follow_up',
   'replied',
   'interested',
+  'meeting_link_sent',
   'meeting_booked',
   'handed_off',
   'not_interested',
@@ -30,6 +32,7 @@ export const ACTIVE_STAGES: ProspectStage[] = [
   'follow_up',
   'replied',
   'interested',
+  'meeting_link_sent',
 ];
 
 export type AccountType = 'gmail' | 'outlook' | 'linkedin';

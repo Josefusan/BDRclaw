@@ -617,7 +617,7 @@ export function getHotProspects(): BDRProspect[] {
     .prepare(
       `
     SELECT * FROM bdr_prospects
-    WHERE stage IN ('replied', 'interested', 'meeting_booked')
+    WHERE stage IN ('replied', 'interested', 'meeting_link_sent', 'meeting_booked')
     ORDER BY updated_at DESC
   `,
     )

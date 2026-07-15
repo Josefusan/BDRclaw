@@ -31,6 +31,7 @@ const STAGE_LABEL_MAP: Record<ProspectStage, string> = {
   follow_up: 'Following Up',
   replied: 'Replied',
   interested: 'Interested',
+  meeting_link_sent: 'Meeting Link Sent',
   meeting_booked: 'Meeting Booked',
   handed_off: 'Handed Off',
   not_interested: 'Not Interested',
