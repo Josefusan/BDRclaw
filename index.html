@@ -3,356 +3,614 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BDRclaw — AI SDR Team That Never Sleeps</title>
-  <meta name="description" content="BDRclaw is an AI-native BDR team that automates cold email, LinkedIn DMs, Twitter DMs, WhatsApp, Telegram, SMS, and Instagram outreach — so you can focus on closing." />
-  <meta property="og:title" content="BDRclaw — AI SDR Team That Never Sleeps" />
-  <meta property="og:description" content="Qualified pipeline on autopilot. No SDR hire. No burned cognitive load." />
+  <title>BDRclaw — The AI BDR that books meetings on every channel</title>
+  <meta name="description" content="BDRclaw researches, writes, quality-gates, and sends personalized outreach across email, LinkedIn, SMS, WhatsApp, Telegram and more — then handles replies until a meeting lands on your calendar." />
+  <meta property="og:title" content="BDRclaw — The AI BDR that books meetings on every channel" />
+  <meta property="og:description" content="Researches, writes, quality-gates, and sends personalized outreach across email, LinkedIn, SMS, WhatsApp, Telegram and more — then handles replies until a meeting lands on your calendar." />
   <meta property="og:image" content="https://bdrclaw.dev/assets/social-preview.jpg" />
   <meta property="og:url" content="https://bdrclaw.dev" />
+  <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="BDRclaw — The AI BDR that books meetings on every channel" />
+  <meta name="twitter:description" content="Personalized outreach on email, LinkedIn, SMS, WhatsApp, Telegram and more — replies handled until a meeting lands on your calendar." />
+  <link rel="icon" type="image/png" href="/assets/nanoclaw-favicon.png" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    body { font-family: 'Inter', sans-serif; }
+
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+
     .gradient-text {
       background: linear-gradient(135deg, #f97316, #fb923c, #fdba74);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    .channel-card:hover { transform: translateY(-2px); }
-    .channel-card { transition: transform 0.15s ease, border-color 0.15s ease; }
-    .hero-glow {
-      background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(249,115,22,0.12) 0%, transparent 70%);
+
+    /* ── Hero: subtle animated gradient ─────────────────────────── */
+    .hero-glow { position: relative; overflow: hidden; }
+    .hero-glow::before {
+      content: '';
+      position: absolute;
+      inset: -30% -10% auto -10%;
+      height: 80%;
+      background:
+        radial-gradient(ellipse 55% 45% at 30% 30%, rgba(249,115,22,0.14) 0%, transparent 65%),
+        radial-gradient(ellipse 50% 40% at 70% 20%, rgba(251,146,60,0.10) 0%, transparent 65%);
+      animation: heroDrift 14s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes heroDrift {
+      0%   { transform: translateX(-4%) translateY(0) scale(1); opacity: .85; }
+      100% { transform: translateX(4%) translateY(3%) scale(1.08); opacity: 1; }
+    }
+
+    /* ── Scroll reveal ───────────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(26px);
+      transition:
+        opacity .7s cubic-bezier(.16, 1, .3, 1),
+        transform .7s cubic-bezier(.16, 1, .3, 1);
+      transition-delay: var(--rd, 0s);
+      will-change: opacity, transform;
+    }
+    .reveal.is-visible { opacity: 1; transform: none; }
+
+    /* ── Card hover lift + glow ─────────────────────────────────── */
+    .lift {
+      transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
+    }
+    .lift:hover {
+      transform: translateY(-4px);
+      border-color: rgba(249,115,22,.45);
+      box-shadow: 0 14px 44px -14px rgba(249,115,22,.28);
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────── */
+    .btn { transition: background-color .25s ease, border-color .25s ease, color .25s ease, transform .25s ease, box-shadow .25s ease; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary:hover { box-shadow: 0 8px 28px -8px rgba(249,115,22,.55); }
+
+    /* ── Dashboard mock ─────────────────────────────────────────── */
+    .mock-bar { border-radius: 4px 4px 0 0; background: linear-gradient(to top, rgba(249,115,22,.85), rgba(251,146,60,.55)); }
+    .meter { height: 5px; border-radius: 9999px; background: #27272a; overflow: hidden; }
+    .meter > span { display: block; height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #f97316, #fb923c); }
+
+    /* ── FAQ ────────────────────────────────────────────────────── */
+    details.faq summary { cursor: pointer; list-style: none; }
+    details.faq summary::-webkit-details-marker { display: none; }
+    details.faq summary .chev { transition: transform .3s ease; }
+    details.faq[open] summary .chev { transform: rotate(45deg); }
+
+    /* ── Reduced motion: everything still works, nothing moves ──── */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+      .hero-glow::before { animation: none; }
+      .lift, .btn, details.faq summary .chev { transition: none; }
+      .lift:hover, .btn:hover { transform: none; }
     }
   </style>
 </head>
 <body class="bg-zinc-950 text-white antialiased">
 
-  <!-- NAV -->
+  <!-- ═══════════════ NAV ═══════════════ -->
   <nav class="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
     <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-      <span class="font-bold text-lg tracking-tight">BDRclaw</span>
-      <div class="flex items-center gap-4">
-        <a href="https://github.com/Josefusan/BDRclaw" target="_blank" class="text-zinc-400 hover:text-white text-sm transition">
-          <i class="fa-brands fa-github mr-1"></i>GitHub
-        </a>
-        <a href="https://github.com/Josefusan/BDRclaw#quick-start" target="_blank"
-           class="bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition">
-          Get Started
-        </a>
+      <a href="#top" class="flex items-center gap-2.5">
+        <span class="w-7 h-7 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">B</span>
+        <span class="font-bold text-lg tracking-tight">BDRclaw</span>
+      </a>
+      <div class="hidden md:flex items-center gap-6 text-sm text-zinc-400">
+        <a href="#product" class="hover:text-white transition-colors">Product</a>
+        <a href="#channels" class="hover:text-white transition-colors">Channels</a>
+        <a href="#how" class="hover:text-white transition-colors">How it works</a>
+        <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+        <a href="#faq" class="hover:text-white transition-colors">FAQ</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/Josefusan/BDRclaw" target="_blank" rel="noopener" class="hidden sm:inline text-zinc-400 hover:text-white text-sm transition-colors">GitHub</a>
+        <a href="#free-trial" class="btn btn-primary bg-orange-500 hover:bg-orange-400 text-white text-sm font-semibold px-4 py-1.5 rounded-lg">Start free trial</a>
       </div>
     </div>
   </nav>
 
-  <!-- HERO -->
-  <section class="hero-glow pt-28 pb-20 px-6 text-center">
-    <div class="max-w-4xl mx-auto">
-      <div class="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-semibold px-3 py-1 rounded-full mb-6">
-        <i class="fa-solid fa-bolt"></i> AI SDR TEAM · OPEN SOURCE · MIT LICENSE
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <header id="top" class="hero-glow pt-32 pb-24 px-6 text-center">
+    <div class="max-w-4xl mx-auto relative">
+      <div class="reveal inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-semibold px-3 py-1 rounded-full mb-7 tracking-wide">
+        AI BDR · EMAIL · LINKEDIN · SMS · WHATSAPP · TELEGRAM &amp; MORE
       </div>
 
-      <h1 class="text-5xl sm:text-7xl font-extrabold tracking-tighter mb-6 leading-[1.05]">
-        The AI SDR team<br class="hidden sm:block" />
-        that <span class="gradient-text">never sleeps</span>
+      <h1 class="reveal text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tighter mb-6 leading-[1.05]" style="--rd:.08s">
+        The AI BDR that books meetings<br class="hidden md:block" />
+        on <span class="gradient-text">every channel.</span>
       </h1>
 
-      <p class="text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-        BDRclaw prospects, sequences, and follows up across every channel your buyers live on —
-        email, LinkedIn, Twitter, WhatsApp, Telegram, SMS, and Instagram.
-        You close deals. BDRclaw fills your calendar.
+      <p class="reveal text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-4 leading-relaxed" style="--rd:.16s">
+        BDRclaw researches, writes, quality-gates, and sends personalized outreach across
+        email, LinkedIn, SMS, WhatsApp, Telegram and more — then handles replies until a
+        meeting lands on your calendar.
+      </p>
+      <p class="reveal text-base text-zinc-500 max-w-2xl mx-auto mb-10" style="--rd:.22s">
+        At a fraction of the cost of one SDR hire.
       </p>
 
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
-        <a href="https://github.com/Josefusan/BDRclaw" target="_blank"
-           class="inline-flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-xl hover:bg-zinc-100 transition text-sm">
-          <i class="fa-brands fa-github"></i> Clone on GitHub
+      <div class="reveal flex flex-col sm:flex-row items-center justify-center gap-3" style="--rd:.3s">
+        <a href="#free-trial" class="btn btn-primary inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white font-semibold px-7 py-3.5 rounded-xl text-sm">
+          Start free trial
         </a>
-        <a href="https://github.com/Josefusan/BDRclaw#setup" target="_blank"
-           class="inline-flex items-center gap-2 border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white font-medium px-6 py-3 rounded-xl transition text-sm">
-          <i class="fa-solid fa-book"></i> Read the Docs
+        <a href="#product" class="btn inline-flex items-center gap-2 border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white font-medium px-7 py-3.5 rounded-xl text-sm">
+          See the command center
         </a>
       </div>
+    </div>
+  </header>
 
-      <!-- CHANNEL ICONS BAR -->
-      <div class="flex flex-wrap justify-center gap-3">
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-solid fa-envelope text-blue-400"></i> Cold Email
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-brands fa-linkedin text-blue-500"></i> LinkedIn DMs
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-brands fa-x-twitter text-white"></i> Twitter / X DMs
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-brands fa-whatsapp text-green-400"></i> WhatsApp
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-brands fa-telegram text-sky-400"></i> Telegram
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-solid fa-comment-sms text-purple-400"></i> SMS
-        </span>
-        <span class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-full">
-          <i class="fa-brands fa-instagram text-pink-400"></i> Instagram
-        </span>
+  <!-- ═══════════════ CONTRAST STRIP ═══════════════ -->
+  <section class="py-16 px-6 border-y border-zinc-800/60 bg-zinc-900/30">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="reveal text-2xl sm:text-3xl font-bold text-center mb-3 tracking-tight">
+        Everything email tools like Instantly do —<br class="hidden sm:block" />
+        <span class="gradient-text">on every channel that books meetings.</span>
+      </h2>
+      <p class="reveal text-zinc-400 text-center mb-10 max-w-2xl mx-auto" style="--rd:.08s">
+        Email platforms give you send infrastructure. BDRclaw gives you a thinking SDR.
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="reveal bg-zinc-900 border border-zinc-800 rounded-2xl p-6" style="--rd:.12s">
+          <div class="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-4">Send infrastructure</div>
+          <ul class="space-y-3 text-sm text-zinc-400">
+            <li class="flex gap-3"><span class="text-zinc-600 mt-0.5">—</span>Sequences fire on schedule, one channel</li>
+            <li class="flex gap-3"><span class="text-zinc-600 mt-0.5">—</span>You write the templates</li>
+            <li class="flex gap-3"><span class="text-zinc-600 mt-0.5">—</span>You read and answer every reply</li>
+            <li class="flex gap-3"><span class="text-zinc-600 mt-0.5">—</span>You update the CRM by hand</li>
+          </ul>
+        </div>
+        <div class="reveal lift bg-zinc-900 border border-orange-500/30 rounded-2xl p-6" style="--rd:.2s">
+          <div class="text-xs font-semibold uppercase tracking-widest text-orange-400 mb-4">A thinking SDR</div>
+          <ul class="space-y-3 text-sm text-zinc-300">
+            <li class="flex gap-3"><span class="text-orange-400 mt-0.5">✓</span>AI composes every message per prospect</li>
+            <li class="flex gap-3"><span class="text-orange-400 mt-0.5">✓</span>A second AI quality-gates it before it sends</li>
+            <li class="flex gap-3"><span class="text-orange-400 mt-0.5">✓</span>Replies get handled until a meeting books</li>
+            <li class="flex gap-3"><span class="text-orange-400 mt-0.5">✓</span>Your CRM syncs automatically</li>
+          </ul>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- VALUE PROP TABLE -->
-  <section class="py-16 px-6 border-y border-zinc-800/60">
-    <div class="max-w-3xl mx-auto">
-      <div class="grid grid-cols-2 gap-px bg-zinc-800 rounded-2xl overflow-hidden text-sm">
-        <div class="bg-zinc-900 px-6 py-4 font-semibold text-zinc-400 uppercase tracking-widest text-xs">BDRclaw does</div>
-        <div class="bg-zinc-900 px-6 py-4 font-semibold text-zinc-400 uppercase tracking-widest text-xs">You do</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-check text-orange-400 w-4"></i>Prospect on LinkedIn</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-phone text-green-400 w-4"></i>Run discovery calls</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-check text-orange-400 w-4"></i>Send cold email sequences</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-handshake text-green-400 w-4"></i>Handle objections</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-check text-orange-400 w-4"></i>DM via WhatsApp, SMS, Telegram</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-pen text-green-400 w-4"></i>Negotiate and close</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-check text-orange-400 w-4"></i>Classify replies + follow up</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-file-signature text-green-400 w-4"></i>Sign contracts</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-check text-orange-400 w-4"></i>Sync CRM + flag hot leads</div>
-        <div class="bg-zinc-950 px-6 py-3 text-zinc-300 flex items-center gap-2"><i class="fa-solid fa-dollar-sign text-green-400 w-4"></i>Collect payment</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CHANNELS GRID -->
-  <section class="py-20 px-6">
+  <!-- ═══════════════ PRODUCT / COMMAND CENTER ═══════════════ -->
+  <section id="product" class="py-24 px-6 scroll-mt-16">
     <div class="max-w-5xl mx-auto">
-      <h2 class="text-3xl font-bold text-center mb-3">Every channel. One system.</h2>
-      <p class="text-zinc-400 text-center mb-12">Each channel self-activates when you add the credentials. No code changes.</p>
+      <h2 class="reveal text-3xl sm:text-4xl font-bold text-center mb-3 tracking-tight">Your outbound, in one command center</h2>
+      <p class="reveal text-zinc-400 text-center mb-12 max-w-2xl mx-auto" style="--rd:.08s">
+        One command center for Email, LinkedIn, Instagram, X, SMS, WhatsApp, Telegram.
+      </p>
+
+      <!-- CSS-drawn dashboard mock (illustrative) -->
+      <div class="reveal" style="--rd:.15s" role="img" aria-label="Illustrative preview of the BDRclaw command center dashboard: sidebar navigation, pipeline funnel chart, and channel cards with daily limit meters">
+        <div aria-hidden="true" class="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden shadow-[0_24px_80px_-24px_rgba(249,115,22,0.18)]">
+          <!-- Title bar -->
+          <div class="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950/60">
+            <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
+            <span class="ml-3 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-md px-3 py-1">BDRclaw — Command Center</span>
+          </div>
+
+          <div class="flex">
+            <!-- Sidebar -->
+            <div class="hidden sm:flex w-44 flex-col border-r border-zinc-800/70 bg-zinc-950/40 p-3 gap-1 shrink-0">
+              <div class="flex items-center gap-2 px-2 pt-1 pb-3">
+                <span class="w-6 h-6 bg-orange-500 rounded-md flex items-center justify-center text-white font-bold text-[10px]">B</span>
+                <span class="text-white font-semibold text-xs tracking-tight">BDRclaw</span>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/15 text-orange-400 text-xs font-medium">
+                <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span>Overview
+              </div>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 text-xs">
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>Prospects
+              </div>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 text-xs">
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>Campaigns
+              </div>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 text-xs">
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>Channels
+              </div>
+              <div class="mt-auto flex items-center gap-1.5 px-3 pb-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span class="text-zinc-600 text-[10px]">Outreach loop active</span>
+              </div>
+            </div>
+
+            <!-- Main panel -->
+            <div class="flex-1 p-4 sm:p-5 grid gap-4 min-w-0">
+              <!-- Funnel chart card -->
+              <div class="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                  <span class="text-xs font-semibold text-zinc-300">Pipeline funnel</span>
+                  <span class="text-[10px] text-zinc-600 uppercase tracking-widest">This week</span>
+                </div>
+                <div class="flex items-end gap-3 sm:gap-5 h-28 px-1">
+                  <div class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                    <div class="mock-bar w-full" style="height:100%"></div>
+                    <span class="text-[10px] text-zinc-500">Contacted</span>
+                  </div>
+                  <div class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                    <div class="mock-bar w-full" style="height:62%"></div>
+                    <span class="text-[10px] text-zinc-500">Opened</span>
+                  </div>
+                  <div class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                    <div class="mock-bar w-full" style="height:36%"></div>
+                    <span class="text-[10px] text-zinc-500">Replied</span>
+                  </div>
+                  <div class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                    <div class="mock-bar w-full" style="height:22%"></div>
+                    <span class="text-[10px] text-zinc-500">Qualified</span>
+                  </div>
+                  <div class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                    <div class="mock-bar w-full" style="height:12%"></div>
+                    <span class="text-[10px] text-zinc-500">Meetings</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Channel cards with limit meters -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-zinc-950/50 border border-zinc-800 rounded-xl p-3.5">
+                  <div class="flex items-center justify-between mb-2.5">
+                    <span class="text-xs font-medium text-zinc-300">Email</span>
+                    <span class="text-[10px] text-emerald-400">● Sending</span>
+                  </div>
+                  <div class="meter mb-1.5"><span style="width:68%"></span></div>
+                  <span class="text-[10px] text-zinc-600">Daily limit · 34 / 50</span>
+                </div>
+                <div class="bg-zinc-950/50 border border-zinc-800 rounded-xl p-3.5">
+                  <div class="flex items-center justify-between mb-2.5">
+                    <span class="text-xs font-medium text-zinc-300">LinkedIn</span>
+                    <span class="text-[10px] text-emerald-400">● Active</span>
+                  </div>
+                  <div class="meter mb-1.5"><span style="width:60%"></span></div>
+                  <span class="text-[10px] text-zinc-600">Invites · 12 / 20 cap</span>
+                </div>
+                <div class="bg-zinc-950/50 border border-zinc-800 rounded-xl p-3.5">
+                  <div class="flex items-center justify-between mb-2.5">
+                    <span class="text-xs font-medium text-zinc-300">SMS</span>
+                    <span class="text-[10px] text-zinc-500">● Queued</span>
+                  </div>
+                  <div class="meter mb-1.5"><span style="width:50%"></span></div>
+                  <span class="text-[10px] text-zinc-600">TCPA touches · 1 / 2 max</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="text-center text-xs text-zinc-600 mt-4">Illustrative preview of the BDRclaw command center.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ CHANNELS ═══════════════ -->
+  <section id="channels" class="py-24 px-6 border-t border-zinc-800/60 scroll-mt-16">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="reveal text-3xl sm:text-4xl font-bold text-center mb-3 tracking-tight">Seven channels. Honest statuses.</h2>
+      <p class="reveal text-zinc-400 text-center mb-12 max-w-2xl mx-auto" style="--rd:.08s">
+        Every channel tells you exactly what it needs and what it will — and won't — do.
+      </p>
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-              <i class="fa-solid fa-envelope text-blue-400 text-lg"></i>
+        <!-- Email -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:0s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-blue-500/10 text-blue-400 rounded-xl flex items-center justify-center font-bold text-sm">@</span>
+              <span class="font-semibold text-sm">Email</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">Cold Email</div>
-              <div class="text-zinc-500 text-xs">Gmail OAuth</div>
-            </div>
+            <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2.5 py-0.5">Live</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Multi-step sequences, reply detection, meeting link injection. Up to 3 sending accounts with per-account daily limits.</p>
-          <div class="mt-3 text-xs text-green-400 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Works today — run <code class="text-zinc-300">npm run gmail-auth</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Multi-step sequences, AI-composed per prospect, reply detection, meeting link injection.</p>
         </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-blue-600/10 rounded-xl flex items-center justify-center">
-              <i class="fa-brands fa-linkedin text-blue-500 text-lg"></i>
+        <!-- SMS -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:.06s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-purple-500/10 text-purple-400 rounded-xl flex items-center justify-center font-bold text-sm">S</span>
+              <span class="font-semibold text-sm">SMS</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">LinkedIn DMs</div>
-              <div class="text-zinc-500 text-xs">Browser automation</div>
-            </div>
+            <span class="text-[11px] font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-0.5">Connect your Twilio</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Connection requests with personalized notes, DM sequences for 1st-degree connections, reply polling. Daily limits enforced.</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Run <code class="text-zinc-300">npm run linkedin-auth</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Send and receive texts through your Twilio number. TCPA-safe: max 2 unsolicited touches per prospect.</p>
         </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-zinc-800 rounded-xl flex items-center justify-center">
-              <i class="fa-brands fa-x-twitter text-white text-lg"></i>
+        <!-- WhatsApp -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:.12s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-green-500/10 text-green-400 rounded-xl flex items-center justify-center font-bold text-sm">W</span>
+              <span class="font-semibold text-sm">WhatsApp</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">Twitter / X DMs</div>
-              <div class="text-zinc-500 text-xs">Twitter API v2</div>
-            </div>
+            <span class="text-[11px] font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-0.5">Connect your Twilio</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">DMs via Twitter API v2. Resolves @handles to user IDs automatically. Requires Basic dev tier ($100/mo).</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Run <code class="text-zinc-300">npm run twitter-auth</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Outbound messages and inbound reply handling through your Twilio WhatsApp number.</p>
         </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
-              <i class="fa-brands fa-whatsapp text-green-400 text-lg"></i>
+        <!-- Telegram -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:.18s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-sky-500/10 text-sky-400 rounded-xl flex items-center justify-center font-bold text-sm">T</span>
+              <span class="font-semibold text-sm">Telegram</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">WhatsApp</div>
-              <div class="text-zinc-500 text-xs">Twilio WhatsApp API</div>
-            </div>
+            <span class="text-[11px] font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-0.5">Connect your bot</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Outbound messages + inbound reply webhook. Use Twilio sandbox for dev, dedicated number for production. Shared credentials with SMS.</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Set <code class="text-zinc-300">TWILIO_WHATSAPP_NUMBER</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Bring your bot credentials; BDRclaw converses and sequences prospects who message it.</p>
         </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center">
-              <i class="fa-brands fa-telegram text-sky-400 text-lg"></i>
+        <!-- LinkedIn -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:.24s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-blue-600/10 text-blue-500 rounded-xl flex items-center justify-center font-bold text-sm">in</span>
+              <span class="font-semibold text-sm">LinkedIn</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">Telegram</div>
-              <div class="text-zinc-500 text-xs">Telegram Bot API</div>
-            </div>
+            <span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-0.5">Guided setup</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Long-polling bot — works behind any firewall, no webhook needed. Prospects DM the bot; BDRclaw responds and sequences them.</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Set <code class="text-zinc-300">TELEGRAM_BOT_TOKEN</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Personalized connection requests and DM sequences — capped at 20 invites per day to protect your account.</p>
         </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center">
-              <i class="fa-solid fa-comment-sms text-purple-400 text-lg"></i>
+        <!-- X + Instagram -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-5" style="--rd:.3s">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="w-9 h-9 bg-zinc-800 text-zinc-300 rounded-xl flex items-center justify-center font-bold text-sm">X</span>
+              <span class="font-semibold text-sm">X (Twitter) &amp; Instagram</span>
             </div>
-            <div>
-              <div class="font-semibold text-sm">SMS</div>
-              <div class="text-zinc-500 text-xs">Twilio Programmable SMS</div>
-            </div>
+            <span class="text-[11px] font-semibold text-zinc-400 bg-zinc-500/10 border border-zinc-600/40 rounded-full px-2.5 py-0.5">Warm replies only</span>
           </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Send and receive SMS. TCPA-compliant — max 2 unsolicited touches per prospect. Reply webhook at <code class="text-zinc-500">/webhooks/sms</code>.</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Set <code class="text-zinc-300">SMS_ENABLED=true</code></div>
+          <p class="text-zinc-400 text-xs leading-relaxed">Policy-safe by design: BDRclaw responds to prospects who engage first — no cold DM spraying.</p>
         </div>
+      </div>
 
-        <div class="channel-card bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:col-span-2 lg:col-span-1">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 bg-pink-500/10 rounded-xl flex items-center justify-center">
-              <i class="fa-brands fa-instagram text-pink-400 text-lg"></i>
-            </div>
-            <div>
-              <div class="font-semibold text-sm">Instagram</div>
-              <div class="text-zinc-500 text-xs">Instagram Graph API</div>
-            </div>
-          </div>
-          <p class="text-zinc-400 text-xs leading-relaxed">Warm-lead follow-up only — Meta's API permits DMs only to users who message you first. Perfect for inbound lead nurturing.</p>
-          <div class="mt-3 text-xs text-zinc-500 font-medium"><i class="fa-solid fa-circle text-[6px] mr-1"></i>Set <code class="text-zinc-300">INSTAGRAM_ENABLED=true</code></div>
+      <!-- Account protection framing -->
+      <div class="reveal mt-8 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6" style="--rd:.1s">
+        <div class="text-xs font-semibold uppercase tracking-widest text-orange-400 mb-4">Built-in account protection</div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-zinc-400">
+          <div class="flex gap-3"><span class="text-orange-400">✓</span>LinkedIn capped at 20 invites/day</div>
+          <div class="flex gap-3"><span class="text-orange-400">✓</span>SMS TCPA 2-touch maximum</div>
+          <div class="flex gap-3"><span class="text-orange-400">✓</span>Quality gate on every message</div>
+          <div class="flex gap-3"><span class="text-orange-400">✓</span>One-click unsubscribe compliance</div>
         </div>
-
       </div>
     </div>
   </section>
 
-  <!-- HOW IT WORKS -->
-  <section class="py-20 px-6 border-t border-zinc-800/60">
+  <!-- ═══════════════ HOW IT WORKS ═══════════════ -->
+  <section id="how" class="py-24 px-6 border-t border-zinc-800/60 bg-zinc-900/30 scroll-mt-16">
     <div class="max-w-4xl mx-auto">
-      <h2 class="text-3xl font-bold text-center mb-3">Up in 4 steps</h2>
-      <p class="text-zinc-400 text-center mb-14">Start with cold email in under 10 minutes. Add channels as you go.</p>
+      <h2 class="reveal text-3xl sm:text-4xl font-bold text-center mb-3 tracking-tight">Live in three steps</h2>
+      <p class="reveal text-zinc-400 text-center mb-14 max-w-2xl mx-auto" style="--rd:.08s">
+        You describe what you sell. BDRclaw does the rest.
+      </p>
 
-      <div class="grid sm:grid-cols-2 gap-6">
-        <div class="flex gap-4">
-          <div class="flex-shrink-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold">1</div>
-          <div>
-            <div class="font-semibold mb-1">Clone + install</div>
-            <pre class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 overflow-x-auto">git clone github.com/Josefusan/BDRclaw
-cd BDRclaw && npm install</pre>
-          </div>
+      <div class="grid sm:grid-cols-3 gap-6">
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-6" style="--rd:0s">
+          <div class="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold mb-4">1</div>
+          <div class="font-semibold mb-2">Import prospects</div>
+          <p class="text-zinc-400 text-sm leading-relaxed">Upload a CSV or connect your CRM. Every prospect gets its own research file and memory.</p>
         </div>
-        <div class="flex gap-4">
-          <div class="flex-shrink-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold">2</div>
-          <div>
-            <div class="font-semibold mb-1">Configure .env</div>
-            <pre class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 overflow-x-auto">cp .env.example .env
-# Fill in ANTHROPIC_API_KEY + channels</pre>
-          </div>
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-6" style="--rd:.1s">
+          <div class="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold mb-4">2</div>
+          <div class="font-semibold mb-2">Describe your offer</div>
+          <p class="text-zinc-400 text-sm leading-relaxed">A 3-minute chat is all it takes — BDR Claude builds the whole multi-channel sequence for you.</p>
         </div>
-        <div class="flex gap-4">
-          <div class="flex-shrink-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold">3</div>
-          <div>
-            <div class="font-semibold mb-1">Import your leads</div>
-            <pre class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 overflow-x-auto">npm run import-csv prospects.csv
-# or add via dashboard at :3000</pre>
-          </div>
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-6" style="--rd:.2s">
+          <div class="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold mb-4">3</div>
+          <div class="font-semibold mb-2">Meetings land on your calendar</div>
+          <p class="text-zinc-400 text-sm leading-relaxed">Replies get handled, meetings land on your Calendly, and your CRM stays current — automatically.</p>
         </div>
-        <div class="flex gap-4">
-          <div class="flex-shrink-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-sm font-bold">4</div>
-          <div>
-            <div class="font-semibold mb-1">Start + fire first cycle</div>
-            <pre class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 overflow-x-auto">npm run dev     # dashboard at :3000
-npm run brain   # trigger first outreach</pre>
-          </div>
+      </div>
+
+      <!-- CRM row -->
+      <div class="reveal mt-12 text-center" style="--rd:.1s">
+        <p class="text-zinc-500 text-sm mb-4">Your CRM stays the source of truth.</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <span class="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm font-medium px-4 py-2 rounded-xl">GoHighLevel</span>
+          <span class="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm font-medium px-4 py-2 rounded-xl">HubSpot</span>
+          <span class="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm font-medium px-4 py-2 rounded-xl">Monday</span>
+          <span class="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm font-medium px-4 py-2 rounded-xl">Salesforce</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ARCHITECTURE -->
-  <section class="py-20 px-6 border-t border-zinc-800/60 bg-zinc-900/30">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="text-3xl font-bold mb-3">Small enough to understand</h2>
-      <p class="text-zinc-400 mb-10">One Node.js process. A handful of source files. Agents run in isolated containers — Bash access is safe because commands run inside Docker, not on your host.</p>
+  <!-- ═══════════════ PRICING ═══════════════ -->
+  <section id="pricing" class="py-24 px-6 border-t border-zinc-800/60 scroll-mt-16">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="reveal text-3xl sm:text-4xl font-bold text-center mb-3 tracking-tight">Simple monthly pricing</h2>
+      <p class="reveal text-zinc-400 text-center mb-8 max-w-2xl mx-auto" style="--rd:.08s">
+        Every plan starts with a free trial. No credit card required.
+      </p>
 
-      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-left font-mono text-xs text-zinc-400 leading-loose">
-        <span class="text-zinc-600"># Architecture</span><br />
-        Channels (Email / LinkedIn / WhatsApp / SMS / Telegram / Twitter)<br />
-        <span class="ml-4 text-zinc-600">↓</span><br />
-        <span class="ml-4">SQLite queue</span><br />
-        <span class="ml-8 text-zinc-600">↓</span><br />
-        <span class="ml-8">Polling loop + BDR Brain</span><br />
-        <span class="ml-12 text-zinc-600">↓</span><br />
-        <span class="ml-12">Container (Claude Agent SDK)  <span class="text-orange-400">←→</span>  prospects/*/CLAUDE.md</span><br />
-        <span class="ml-16 text-zinc-600">↓</span><br />
-        <span class="ml-16">CRM sync + outbound actions</span>
+      <!-- Founding partner banner -->
+      <div class="reveal max-w-3xl mx-auto mb-12 bg-orange-500/10 border border-orange-500/30 rounded-2xl px-6 py-4 text-center" style="--rd:.12s">
+        <span class="text-orange-400 font-semibold text-sm">Founding Partner offer — </span>
+        <span class="text-zinc-300 text-sm">First 5 customers: 30% off for life + setup fee waived, in exchange for a case study. Applies to Starter and Growth.</span>
       </div>
+
+      <div class="grid md:grid-cols-3 gap-5 items-stretch">
+        <!-- Starter -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-7 flex flex-col" style="--rd:0s">
+          <div class="font-semibold text-sm text-zinc-400 uppercase tracking-widest mb-3">Starter</div>
+          <div class="mb-5"><span class="text-4xl font-extrabold tracking-tight">$199</span><span class="text-zinc-500 text-sm">/mo</span></div>
+          <ul class="space-y-3 text-sm text-zinc-400 mb-8">
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>Email + SMS outreach</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>500 active prospects</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>1 CRM sync</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>AI quality gate</li>
+          </ul>
+          <a href="#free-trial" class="btn mt-auto text-center border border-zinc-700 hover:border-orange-500/60 text-zinc-200 hover:text-white font-semibold px-5 py-3 rounded-xl text-sm">Start free trial</a>
+        </div>
+
+        <!-- Growth (highlighted) -->
+        <div class="reveal lift relative bg-zinc-900 border border-orange-500/50 rounded-2xl p-7 flex flex-col shadow-[0_0_50px_-18px_rgba(249,115,22,0.35)]" style="--rd:.1s">
+          <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[11px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">Most popular</span>
+          <div class="font-semibold text-sm text-orange-400 uppercase tracking-widest mb-3">Growth</div>
+          <div class="mb-5"><span class="text-4xl font-extrabold tracking-tight">$497</span><span class="text-zinc-500 text-sm">/mo</span></div>
+          <ul class="space-y-3 text-sm text-zinc-300 mb-8">
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>Every channel, incl. guided LinkedIn setup</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>2,500 active prospects</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>All CRM integrations</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>Priority support</li>
+          </ul>
+          <a href="#free-trial" class="btn btn-primary mt-auto text-center bg-orange-500 hover:bg-orange-400 text-white font-semibold px-5 py-3 rounded-xl text-sm">Start free trial</a>
+        </div>
+
+        <!-- Agency -->
+        <div class="reveal lift bg-zinc-900 border border-zinc-800 rounded-2xl p-7 flex flex-col" style="--rd:.2s">
+          <div class="font-semibold text-sm text-zinc-400 uppercase tracking-widest mb-3">Agency</div>
+          <div class="mb-5"><span class="text-4xl font-extrabold tracking-tight">$997</span><span class="text-zinc-500 text-sm">/mo</span></div>
+          <ul class="space-y-3 text-sm text-zinc-400 mb-8">
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>Multi-client GoHighLevel workflows</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>5,000+ prospects</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>Dedicated support</li>
+            <li class="flex gap-3"><span class="text-orange-400">✓</span>White-glove onboarding</li>
+          </ul>
+          <a href="#free-trial" class="btn mt-auto text-center border border-zinc-700 hover:border-orange-500/60 text-zinc-200 hover:text-white font-semibold px-5 py-3 rounded-xl text-sm">Talk to us</a>
+        </div>
+      </div>
+
+      <p class="reveal text-center text-zinc-500 text-sm mt-8" style="--rd:.1s">
+        One-time $299 concierge setup — waived for Founding Partners.
+      </p>
     </div>
   </section>
 
-  <!-- DEPLOY -->
-  <section class="py-20 px-6 border-t border-zinc-800/60">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="text-3xl font-bold mb-3">Deploy anywhere</h2>
-      <p class="text-zinc-400 mb-10">Railway, Fly.io, Docker, bare VPS — pick your flavor. One <code class="text-zinc-300 bg-zinc-800 px-1 py-0.5 rounded">railway.json</code> and a <code class="text-zinc-300 bg-zinc-800 px-1 py-0.5 rounded">Dockerfile</code> are included.</p>
-
-      <div class="grid sm:grid-cols-3 gap-4 text-sm">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div class="font-semibold mb-1">Railway</div>
-          <div class="text-zinc-400 text-xs">Push the repo. Set env vars in the Railway panel. Done.</div>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div class="font-semibold mb-1">Fly.io</div>
-          <div class="text-zinc-400 text-xs"><code>fly launch</code> detects the Dockerfile. Mount a volume for <code>/app/store</code>.</div>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div class="font-semibold mb-1">Docker</div>
-          <div class="text-zinc-400 text-xs"><code>docker build + run</code>. Mount <code>./store</code> for persistence.</div>
-        </div>
-      </div>
-
-      <div class="mt-8 bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-left">
-        <div class="text-zinc-500 text-xs mb-2">Set Twilio webhook URLs to your deployed domain:</div>
-        <pre class="text-xs text-zinc-300 font-mono leading-relaxed">WhatsApp:  https://bdrclaw.dev/webhooks/whatsapp
-SMS:       https://bdrclaw.dev/webhooks/sms</pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA -->
-  <section class="py-24 px-6 text-center border-t border-zinc-800/60">
-    <div class="max-w-2xl mx-auto">
-      <h2 class="text-4xl font-bold mb-4">Start booking meetings tonight</h2>
-      <p class="text-zinc-400 mb-8">Open source. No SDR hire. No burned cognitive load. Just qualified pipeline.</p>
-      <a href="https://github.com/Josefusan/BDRclaw" target="_blank"
-         class="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white font-semibold px-8 py-4 rounded-xl transition text-base">
-        <i class="fa-brands fa-github"></i> Clone BDRclaw on GitHub
+  <!-- ═══════════════ FREE TRIAL ═══════════════ -->
+  <section id="free-trial" class="py-24 px-6 border-t border-zinc-800/60 bg-zinc-900/30 scroll-mt-16">
+    <div class="max-w-2xl mx-auto text-center">
+      <h2 class="reveal text-3xl sm:text-4xl font-bold mb-4 tracking-tight">14-day free pilot</h2>
+      <p class="reveal text-zinc-400 mb-2 leading-relaxed" style="--rd:.08s">
+        We set it up with you — campaigns live within 48 hours.
+      </p>
+      <p class="reveal text-zinc-400 mb-10" style="--rd:.14s">
+        Email-first, capped sends, no credit card.
+      </p>
+      <a href="mailto:josephdclarkjobs@gmail.com?subject=BDRclaw%20free%20trial&amp;body=Hi%2C%20I%27d%20like%20to%20start%20the%20BDRclaw%20free%20trial.%0A%0A1.%20What%20do%20you%20sell%3F%0A%0A2.%20Who%20do%20you%20target%3F%0A%0A3.%20What%20outbound%20channels%20do%20you%20use%20today%3F%0A%0AThanks%21"
+         class="reveal btn btn-primary inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white font-semibold px-8 py-4 rounded-xl text-base" style="--rd:.2s">
+        Start free trial
       </a>
-      <p class="text-zinc-600 text-xs mt-6">MIT licensed · Built on Anthropic Agents SDK · No vendor lock-in</p>
+      <p class="reveal text-zinc-600 text-xs mt-6" style="--rd:.26s">
+        Concierge onboarding · single-tenant · we onboard a limited number of pilots at a time.
+      </p>
     </div>
   </section>
 
-  <!-- FOOTER -->
-  <footer class="border-t border-zinc-800/60 py-8 px-6">
+  <!-- ═══════════════ FAQ ═══════════════ -->
+  <section id="faq" class="py-24 px-6 border-t border-zinc-800/60 scroll-mt-16">
+    <div class="max-w-2xl mx-auto">
+      <h2 class="reveal text-3xl sm:text-4xl font-bold text-center mb-12 tracking-tight">Questions, answered</h2>
+
+      <div class="space-y-3">
+        <details class="faq reveal bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-5 group" style="--rd:0s">
+          <summary class="flex items-center justify-between font-semibold text-sm sm:text-base">
+            Is this just another Instantly?
+            <span class="chev text-orange-400 text-xl leading-none ml-4">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm leading-relaxed mt-4">
+            No. Email is one of our seven channels. Email platforms give you send infrastructure —
+            you still write templates, handle replies, and update the CRM. BDRclaw composes each
+            message per prospect, quality-gates it with a second AI, handles the replies, and books
+            the meeting — across email, LinkedIn, SMS, WhatsApp, Telegram, X, and Instagram.
+          </p>
+        </details>
+
+        <details class="faq reveal bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-5" style="--rd:.06s">
+          <summary class="flex items-center justify-between font-semibold text-sm sm:text-base">
+            Will it get my accounts banned?
+            <span class="chev text-orange-400 text-xl leading-none ml-4">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm leading-relaxed mt-4">
+            Account protection is built in: LinkedIn is capped at 20 invites per day, SMS respects a
+            TCPA 2-touch maximum, X and Instagram run warm-replies-only (policy-safe), and every
+            single message passes an AI quality gate before it sends. Unsubscribes are one click.
+          </p>
+        </details>
+
+        <details class="faq reveal bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-5" style="--rd:.12s">
+          <summary class="flex items-center justify-between font-semibold text-sm sm:text-base">
+            Do I need my own Twilio or LinkedIn account?
+            <span class="chev text-orange-400 text-xl leading-none ml-4">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm leading-relaxed mt-4">
+            Yes — for SMS and WhatsApp you connect your Twilio credentials, for Telegram your bot
+            credentials, and LinkedIn uses your account with guided setup. We walk you through each
+            connection during onboarding.
+          </p>
+        </details>
+
+        <details class="faq reveal bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-5" style="--rd:.18s">
+          <summary class="flex items-center justify-between font-semibold text-sm sm:text-base">
+            What CRMs do you support?
+            <span class="chev text-orange-400 text-xl leading-none ml-4">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm leading-relaxed mt-4">
+            GoHighLevel, HubSpot, Monday, and Salesforce. BDRclaw syncs prospects, replies, and
+            meeting outcomes so your CRM stays the source of truth.
+          </p>
+        </details>
+
+        <details class="faq reveal bg-zinc-900 border border-zinc-800 rounded-2xl px-6 py-5" style="--rd:.24s">
+          <summary class="flex items-center justify-between font-semibold text-sm sm:text-base">
+            How does the free trial work?
+            <span class="chev text-orange-400 text-xl leading-none ml-4">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm leading-relaxed mt-4">
+            It's a 14-day free pilot with concierge onboarding — we set it up with you and campaigns
+            are live within 48 hours. Email-first with capped sends, no credit card required. We
+            onboard a limited number of pilots at a time.
+            <a href="#free-trial" class="text-orange-400 hover:text-orange-300 transition-colors">Start here.</a>
+          </p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer class="border-t border-zinc-800/60 py-10 px-6">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
-      <span>© 2025 BDRclaw — MIT License</span>
-      <div class="flex gap-6 flex-wrap">
-        <a href="/privacy" class="hover:text-zinc-300 transition">Privacy</a>
-        <a href="/terms" class="hover:text-zinc-300 transition">Terms</a>
-        <a href="/unsubscribe" class="hover:text-zinc-300 transition">Unsubscribe</a>
-        <a href="https://github.com/Josefusan/BDRclaw" class="hover:text-zinc-300 transition">GitHub</a>
-        <a href="https://github.com/Josefusan/BDRclaw/blob/main/docs/SPEC.md" class="hover:text-zinc-300 transition">Docs</a>
-        <a href="https://github.com/Josefusan/BDRclaw/blob/main/LICENSE" class="hover:text-zinc-300 transition">License</a>
-        <a href="https://github.com/Josefusan/BDRclaw/blob/main/CONTRIBUTING.md" class="hover:text-zinc-300 transition">Contributing</a>
+      <span>© 2026 BDRclaw</span>
+      <div class="flex gap-6 flex-wrap justify-center">
+        <a href="/privacy.html" class="hover:text-zinc-300 transition-colors">Privacy</a>
+        <a href="/terms.html" class="hover:text-zinc-300 transition-colors">Terms</a>
+        <a href="https://github.com/Josefusan/BDRclaw" target="_blank" rel="noopener" class="hover:text-zinc-300 transition-colors">GitHub</a>
       </div>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var els = document.querySelectorAll('.reveal');
+      if (reduced || !('IntersectionObserver' in window)) {
+        els.forEach(function (el) { el.classList.add('is-visible'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      els.forEach(function (el) { io.observe(el); });
+    })();
+  </script>
 
 </body>
 </html>

@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-07-14T21:00:00Z | **Iteration:** v1.2 — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
+> **Tier:** E4 | **Status:** EXECUTE | **Updated:** 2026-07-14T21:00:00Z | **Iteration:** v1.3 — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -143,6 +143,35 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] Anti: ISC-59: No channel's send path bypasses the quality gate or the suppression check — both outbound entry points (`processEnrollment`, `dispatchAction`) enforce both.
 - [x] Anti: ISC-60: A channel with absent env credentials performs zero network calls and does not register — self-disable is clean and logged.
 
+### Landing Page — bdrclaw.dev (added 2026-07-15)
+- [ ] ISC-61: Root `index.html` rebuilt as a sales landing page — single static file, no build step, same zinc-950/orange scheme as the dashboard.
+- [ ] ISC-62: Hero shows the multi-channel command-center positioning with a "Start free trial" primary CTA above the fold.
+- [ ] ISC-63: Pricing section renders 3 tiers with monthly prices, per-tier feature lists, and a free-trial CTA on each tier.
+- [ ] ISC-64: Channel section shows all of: Email, LinkedIn, Instagram, Twitter/X, SMS, WhatsApp, Telegram — with the safety caps framed as protection.
+- [ ] ISC-65: CSS transitions throughout: scroll-reveal on sections, hover lifts on cards, smooth anchor scrolling — no external JS libraries beyond the existing CDN stack.
+- [ ] ISC-66: Anti: the landing page contains no fabricated social proof (no fake testimonials, logos, user counts) and promises no feature that does not exist in the repo today.
+- [ ] ISC-67: The landing page is live and reachable — GitHub Pages build green (`.nojekyll` present); bdrclaw.dev serves it once DNS exists ([DEFERRED-VERIFY] on the custom domain until Joseph adds registrar records).
+
+### Dashboard — Fully Functional (added 2026-07-15)
+- [ ] ISC-68: `POST /api/loop/start` and `POST /api/loop/stop` control the agentic loop from the dashboard; `/api/health` reflects the true state; UI toggle works.
+- [ ] ISC-69: `GET /api/prospects/:id` returns the prospect with full touch timeline; clicking a prospect row opens a detail drawer rendering it.
+- [ ] ISC-70: Campaigns can be activated AND paused from the UI; state round-trips through PATCH.
+- [ ] ISC-71: The CRM page lists registered adapters (incl. GoHighLevel when configured) and manual pull/push works from the UI.
+- [ ] ISC-75: The campaign-builder chat driven from the browser UI (not curl) produces a `done:true` campaign — live probe.
+
+- [ ] ISC-77: Prospect stage can be changed from the UI (detail drawer control) and round-trips through `updateProspectStage` — the single authoritative CRM-push path.
+- [ ] ISC-78: The Settings page shows the suppression list entries and supports manually adding a contact to suppression from the UI.
+- [ ] ISC-79: Anti: starting the agentic loop from the dashboard requires an explicit confirm step warning that real messages will send; the toggle reflects true loop state after page refresh.
+
+### CRM — GoHighLevel (added 2026-07-15)
+- [ ] ISC-72: A GoHighLevel adapter (`src/crm/gohighlevel.ts`) self-registers when `GHL_API_KEY` + `GHL_LOCATION_ID` are present, pushes stage changes as contact upsert + tag, and is unit-tested with a mocked client.
+- [ ] ISC-73: Anti: with GHL env absent, zero GoHighLevel network calls occur and the adapter does not register.
+
+### War Room Operations (added 2026-07-15)
+- [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph.
+- [ ] ISC-76: Anti: the loop never marks an ISC passed without tool evidence, and never re-litigates decisions recorded in `## Decisions`.
+
+
 ---
 
 ## Test Strategy
@@ -203,6 +232,11 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-07-14** — Forge auto-include (E4 coding) and Cato cross-vendor audit are environmentally blocked: codex routes to a tailnet Ollama host and Tailscale is logged out (documented in HANDOFF gotchas). Show-your-math: delegation floor met with 3× Fable agents; Cato audit deferred with follow-up "run Cato after `tailscale up`".
 - **2026-07-14** — EnterPlanMode skipped despite E4: Joseph's message is an explicit execute directive ("Please finish this"), not a planning request.
 - **2026-07-14** — ISC floor (E4 ≥128) not inflated to quota: project ISA carries 60 real criteria. Show-your-math: padding to 128 would violate the granularity-first rule that criteria describe the actual ideal state.
+- **2026-07-15** — War-room panel (Strategist/Quant/Critic, 2 rounds, fresh Auditor) decided landing positioning + pricing; full record: War Room DEC-2026-07-15. Auditor FAILED the raw panel output; synthesis shipped only audit-fixed claims (no unsourced SDR dollar figure, no fabricated LTV:CAC on page, LinkedIn as "guided setup").
+- **2026-07-15** — E5 Interview-before-BUILD gate waived (show-your-math): principal issued an execute directive and is not available for interactive interview; the war-room panel + prior handoffs stand in as elicitation. CheckCompleteness run instead.
+- **2026-07-15** — Forge auto-include and Cato remain environmentally blocked (Tailscale logged out); fleet is 3× Fable + sonnet panel per principal's standing "Fable subagents" directive.
+- **2026-07-15** — GH Pages build "errored" root-caused to Jekyll processing repo files containing `{{ }}`; fix is `.nojekyll` (landing agent owns). bdrclaw.dev DNS nonexistent — Joseph-blocked; exact records: A @ → 185.199.108.153/109/110/111, CNAME www → josefusan.github.io.
+
 
 ---
 
