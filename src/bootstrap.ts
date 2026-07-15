@@ -33,6 +33,14 @@ import './sms-bdr-actions.js';
 import './telegram-bdr-actions.js';
 import './twitter-bdr-actions.js';
 
+// Side-effect imports: CRM adapters self-register when their env is present.
+// They live here (not only in index.ts) so stage changes made from the
+// standalone web-ui also sync to CRMs.
+import './crm/hubspot.js';
+import './crm/salesforce.js';
+import './crm/monday.js';
+import './crm/gohighlevel.js';
+
 let initialized = false;
 
 /**

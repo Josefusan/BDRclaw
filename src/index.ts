@@ -74,6 +74,7 @@ import { processReply } from './agents/reply-handler.js';
 import './crm/hubspot.js';
 import './crm/salesforce.js';
 import './crm/monday.js';
+import './crm/gohighlevel.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
