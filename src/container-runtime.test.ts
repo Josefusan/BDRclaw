@@ -20,7 +20,7 @@ import {
   CONTAINER_RUNTIME_BIN,
   readonlyMountArgs,
   stopContainer,
-  ensureContainerRuntimeRunning,
+  isContainerRuntimeAvailable,
   cleanupOrphans,
 } from './container-runtime.js';
 import { logger } from './logger.js';
@@ -46,33 +46,29 @@ describe('stopContainer', () => {
   });
 });
 
-// --- ensureContainerRuntimeRunning ---
+// --- isContainerRuntimeAvailable ---
 
-describe('ensureContainerRuntimeRunning', () => {
-  it('does nothing when runtime is already running', () => {
+describe('isContainerRuntimeAvailable', () => {
+  it('returns true when the runtime responds', () => {
     mockExecSync.mockReturnValueOnce('');
 
-    ensureContainerRuntimeRunning();
+    expect(isContainerRuntimeAvailable()).toBe(true);
 
     expect(mockExecSync).toHaveBeenCalledTimes(1);
     expect(mockExecSync).toHaveBeenCalledWith(`${CONTAINER_RUNTIME_BIN} info`, {
       stdio: 'pipe',
       timeout: 10000,
     });
-    expect(logger.debug).toHaveBeenCalledWith(
-      'Container runtime already running',
-    );
   });
 
-  it('throws when docker info fails', () => {
+  it('returns false (never throws) when docker info fails', () => {
     mockExecSync.mockImplementationOnce(() => {
       throw new Error('Cannot connect to the Docker daemon');
     });
 
-    expect(() => ensureContainerRuntimeRunning()).toThrow(
-      'Container runtime is required but failed to start',
-    );
-    expect(logger.error).toHaveBeenCalled();
+    expect(isContainerRuntimeAvailable()).toBe(false);
+    // Containerless mode is a supported state — no error-level logging.
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
 

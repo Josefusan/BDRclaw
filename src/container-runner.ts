@@ -22,6 +22,7 @@ import {
   CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
   hostGatewayArgs,
+  isContainerRuntimeAvailable,
   readonlyMountArgs,
   stopContainer,
 } from './container-runtime.js';
@@ -270,6 +271,22 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<ContainerOutput> {
+  // Point-of-use runtime check (containerless mode): a missing runtime fails
+  // THIS session with an error reply — it must never kill the process, and
+  // Docker coming up later is picked up automatically on the next session.
+  if (!isContainerRuntimeAvailable()) {
+    logger.error(
+      { group: group.name },
+      'Container runtime unavailable — cannot start agent session',
+    );
+    return {
+      status: 'error',
+      result: null,
+      error:
+        'Container runtime (docker) is unavailable — conversational agent sessions are disabled. Start Docker and retry.',
+    };
+  }
+
   const startTime = Date.now();
 
   const groupDir = resolveGroupFolderPath(group.folder);

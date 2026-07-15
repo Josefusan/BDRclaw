@@ -17,7 +17,27 @@ import type {
   TouchChannel,
 } from './bdr-types.js';
 
-let db: Database.Database;
+let dbInstance: Database.Database | undefined;
+
+/**
+ * All module functions access the database through this proxy so that calling
+ * any bdr-db function before initBDRDatabase() fails immediately with a clear,
+ * actionable error instead of a deep `db.prepare` TypeError from inside
+ * better-sqlite3.
+ */
+const db: Database.Database = new Proxy({} as Database.Database, {
+  get(_target, prop) {
+    if (!dbInstance) {
+      throw new Error(
+        `BDR database not initialized — call initBDRDatabase() (or initCore() from bootstrap.js) before using bdr-db (accessed db.${String(prop)})`,
+      );
+    }
+    const value = Reflect.get(dbInstance, prop, dbInstance) as unknown;
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(dbInstance)
+      : value;
+  },
+});
 
 export function getBdrDb(): Database.Database {
   return db;
@@ -25,14 +45,14 @@ export function getBdrDb(): Database.Database {
 
 export function initBDRDatabase(): void {
   fs.mkdirSync(STORE_DIR, { recursive: true });
-  db = new Database(path.join(STORE_DIR, 'bdr.db'));
-  createSchema(db);
+  dbInstance = new Database(path.join(STORE_DIR, 'bdr.db'));
+  createSchema(dbInstance);
 }
 
 /** @internal - for tests only */
 export function _initBDRTestDatabase(): void {
-  db = new Database(':memory:');
-  createSchema(db);
+  dbInstance = new Database(':memory:');
+  createSchema(dbInstance);
 }
 
 function createSchema(database: Database.Database): void {
@@ -1122,4 +1142,39 @@ export function getRecentActivity(limit = 20): ActivityItem[] {
       sent_at: r.sent_at,
     };
   });
+}
+
+// ── Dashboard queries (channel usage + suppression) ───────────────────────────
+// Appended for the /api/channels/status and /api/suppression endpoints.
+
+/** Outbound touches sent today (UTC day), grouped by channel. */
+export function getTodayOutboundByChannel(): Record<string, number> {
+  const since = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const rows = db
+    .prepare(
+      `SELECT channel, COUNT(*) as count FROM bdr_touches
+       WHERE direction = 'outbound' AND sent_at >= ?
+       GROUP BY channel`,
+    )
+    .all(since) as Array<{ channel: string; count: number }>;
+  const result: Record<string, number> = {};
+  for (const r of rows) result[r.channel] = r.count;
+  return result;
+}
+
+export interface SuppressionEntry {
+  contact: string;
+  channel: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+/** Full global suppression list, newest first. */
+export function getSuppressionList(): SuppressionEntry[] {
+  return db
+    .prepare(
+      `SELECT contact, channel, reason, created_at FROM bdr_suppression
+       ORDER BY created_at DESC`,
+    )
+    .all() as SuppressionEntry[];
 }

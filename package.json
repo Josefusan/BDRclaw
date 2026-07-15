@@ -10,7 +10,7 @@
     "dev": "tsx src/index.ts",
     "web": "tsx src/web-ui.ts",
     "wizard": "tsx setup/wizard.ts",
-    "brain": "tsx -e \"import('./src/bdr-brain.js').then(m => m.runCycle())\"",
+    "brain": "tsx src/brain-cli.ts",
     "gmail-auth": "tsx setup/gmail-auth.ts",
     "linkedin-auth": "tsx setup/linkedin-auth.ts",
     "twitter-auth": "tsx setup/twitter-auth.ts",
