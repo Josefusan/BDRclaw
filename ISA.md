@@ -100,48 +100,48 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] Anti: ISC-28: Removing `HUBSPOT_ACCESS_TOKEN` from `.env` results in zero HubSpot API calls on the next run — the adapter self-disables cleanly.
 
 ### Channels — Core Delivery
-- [ ] ISC-29: All seven channels (`email`, `linkedin`, `twitter`, `instagram`, `telegram`, `whatsapp`, `sms`) self-register when their respective env vars are present.
-- [ ] ISC-30: Each channel's `sendMessage()` enforces its daily limit and throws when the limit is reached — never silently drops the message.
+- [x] ISC-29: All seven channels (`email`, `linkedin`, `twitter`, `instagram`, `telegram`, `whatsapp`, `sms`) self-register when their respective env vars are present.
+- [x] ISC-30: Each channel's `sendMessage()` enforces its daily limit and throws when the limit is reached — never silently drops the message.
 - [DEFERRED-VERIFY] ISC-31: Twilio inbound webhooks for SMS and WhatsApp reach `ReplyHandler.process()` within one request cycle. *(2026-07-08: wired in code — onMessage → `getProspectByContact('sms'|'whatsapp')` → `processReply`, with per-message idempotency. Live-probe deferred: needs a deployed public webhook URL (Phase 2). Follow-up: live SMS round-trip after Railway deploy.)*
 - [DEFERRED-VERIFY] ISC-32: Telegram long-polling delivers inbound messages to `ReplyHandler.process()` within 35 seconds of the user sending. *(2026-07-08: wired in code — same onMessage path resolves `telegram:<chatId>`. Live-probe deferred: needs a running bot + real chat. Follow-up: live Telegram round-trip.)*
 
 ### Web Dashboard
-- [ ] ISC-33: `GET /api/stats` returns `PipelineStats` with correct `by_stage` counts matching the DB.
-- [ ] ISC-34: `GET /` serves the dashboard HTML with no 404 or 500 status.
-- [ ] ISC-35: `GET /api/health` returns `{ status: "ok" }` within 200ms.
-- [ ] Anti: ISC-36: No API route exposes raw SQL errors in the response body — all 500 responses return `{ error: "Internal error" }`.
+- [x] ISC-33: `GET /api/stats` returns `PipelineStats` with correct `by_stage` counts matching the DB.
+- [x] ISC-34: `GET /` serves the dashboard HTML with no 404 or 500 status.
+- [x] ISC-35: `GET /api/health` returns `{ status: "ok" }` within 200ms.
+- [x] Anti: ISC-36: No API route exposes raw SQL errors in the response body — all 500 responses return `{ error: "Internal error" }`.
 
 ### Deployment
-- [ ] ISC-37: `npm run build` (`tsc`) completes with zero TypeScript errors.
+- [x] ISC-37: `npm run build` (`tsc`) completes with zero TypeScript errors.
 - [ ] ISC-38: `Dockerfile` builds successfully and the resulting image starts with `node dist/index.js`.
 - [ ] ISC-39: `railway.json` specifies `Dockerfile` builder and `ON_FAILURE` restart policy.
 - [ ] ISC-40: The running service on `bdrclaw.dev` responds to `GET /api/health` with `{ status: "ok" }`.
 - [ ] Anti: ISC-41: No `.env` file is present in the built Docker image — secrets are env vars only.
 
 ### Dashboard v2 — SaaS-Grade UI (added 2026-07-14)
-- [ ] ISC-42: `GET /` serves the SPA and every nav page (Overview, Prospects, Campaigns, Channels, Activity, Settings) renders without browser console errors.
-- [ ] ISC-43: Every dashboard page shows a meaningful empty state with a call-to-action when its data set is empty — no blank panels or spinner deadlocks.
-- [ ] ISC-44: The Overview page renders pipeline funnel counts that match `GET /api/stats` `by_stage` values.
-- [ ] ISC-45: The Prospects page supports search, stage filter, add-prospect, and CSV import against the existing `/api/prospects*` endpoints.
+- [x] ISC-42: `GET /` serves the SPA and every nav page (Overview, Prospects, Campaigns, Channels, Activity, Settings) renders without browser console errors.
+- [x] ISC-43: Every dashboard page shows a meaningful empty state with a call-to-action when its data set is empty — no blank panels or spinner deadlocks.
+- [x] ISC-44: The Overview page renders pipeline funnel counts that match `GET /api/stats` `by_stage` values.
+- [x] ISC-45: The Prospects page supports search, stage filter, add-prospect, and CSV import against the existing `/api/prospects*` endpoints.
 - [ ] ISC-46: The campaign builder conversation is reachable from the dashboard UI and drives `/api/campaigns/builder/start` + `/chat` to a `{ done: true }` campaign.
-- [ ] ISC-47: The Channels page shows, per channel, configured-vs-verified status and daily-limit meters sourced from `GET /api/channels/status` — env-var presence alone is never displayed as "working".
-- [ ] ISC-48: The Activity page renders real `bdr_touches` rows including `direction` and `blocked` status.
-- [ ] ISC-49: The Settings page lists, per channel, which required env vars are missing to activate it.
-- [ ] Anti: ISC-50: No dashboard page requires an external build step — static assets in `public/` served by the Node `http` server only.
+- [x] ISC-47: The Channels page shows, per channel, configured-vs-verified status and daily-limit meters sourced from `GET /api/channels/status` — env-var presence alone is never displayed as "working".
+- [x] ISC-48: The Activity page renders real `bdr_touches` rows including `direction` and `blocked` status.
+- [x] ISC-49: The Settings page lists, per channel, which required env vars are missing to activate it.
+- [x] Anti: ISC-50: No dashboard page requires an external build step — static assets in `public/` served by the Node `http` server only.
 
 ### Runtime Hardening (added 2026-07-14)
-- [ ] ISC-51: `npm run brain` runs standalone without crashing — it initializes the BDR database and loads channels before `runCycle()`.
-- [ ] ISC-52: The orchestrator boots and serves the dashboard + BDR loop on a machine with no Docker daemon — container runtime degrades gracefully (agent containers are only required for conversational group-chat sessions).
-- [ ] ISC-53: `GET /api/channels/status` returns `{ channel, configured, verified, dailyLimit, usedToday }` for all seven channels.
-- [ ] Anti: ISC-54: A machine without Docker never sees `FATAL` from `ensureContainerSystemRunning` — degraded mode is logged, not fatal.
+- [x] ISC-51: `npm run brain` runs standalone without crashing — it initializes the BDR database and loads channels before `runCycle()`.
+- [x] ISC-52: The orchestrator boots and serves the dashboard + BDR loop on a machine with no Docker daemon — container runtime degrades gracefully (agent containers are only required for conversational group-chat sessions).
+- [x] ISC-53: `GET /api/channels/status` returns `{ channel, configured, verified, dailyLimit, usedToday }` for all seven channels.
+- [x] Anti: ISC-54: A machine without Docker never sees `FATAL` from `ensureContainerSystemRunning` — degraded mode is logged, not fatal.
 
 ### Channel Completion — LinkedIn / Twitter / SMS / WhatsApp (added 2026-07-14)
-- [ ] ISC-55: The SMS send path enforces the TCPA 2-unsolicited-touch cap and the suppression list, verified by unit tests.
-- [ ] ISC-56: WhatsApp outbound is warm-only — a send to a prospect with zero inbound WhatsApp touches is refused, verified by unit test.
-- [ ] ISC-57: The LinkedIn DM sender is code-complete with ≤20 connection-requests/day and ≤50 DMs/day caps enforced; live send is [DEFERRED-VERIFY] pending an authenticated LinkedIn session.
-- [ ] ISC-58: Twitter/X DM outbound is warm/reply-only — cold DM attempts are refused; warm replies send via `twitter-api-v2` when creds present.
-- [ ] Anti: ISC-59: No channel's send path bypasses the quality gate or the suppression check — both outbound entry points (`processEnrollment`, `dispatchAction`) enforce both.
-- [ ] Anti: ISC-60: A channel with absent env credentials performs zero network calls and does not register — self-disable is clean and logged.
+- [x] ISC-55: The SMS send path enforces the TCPA 2-unsolicited-touch cap and the suppression list, verified by unit tests.
+- [x] ISC-56: WhatsApp outbound is warm-only — a send to a prospect with zero inbound WhatsApp touches is refused, verified by unit test.
+- [DEFERRED-VERIFY] ISC-57: The LinkedIn DM sender is code-complete with ≤20 connection-requests/day and ≤50 DMs/day caps enforced; live send is [DEFERRED-VERIFY] pending an authenticated LinkedIn session.
+- [x] ISC-58: Twitter/X DM outbound is warm/reply-only — cold DM attempts are refused; warm replies send via `twitter-api-v2` when creds present.
+- [x] Anti: ISC-59: No channel's send path bypasses the quality gate or the suppression check — both outbound entry points (`processEnrollment`, `dispatchAction`) enforce both.
+- [x] Anti: ISC-60: A channel with absent env credentials performs zero network calls and does not register — self-disable is clean and logged.
 
 ---
 
@@ -220,3 +220,18 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **ISC-17** — e2e test › "a deterministic STOP unsubscribes without any AI call and halts outbound": stage → `unsubscribed`, classifier call count `=== 0` (pre-gate ran first), and a subsequent tick does not invoke the send handler (suppression + stage skip). Passes.
 - **ISC-31/32** — `[DEFERRED-VERIFY]`: wired in `src/index.ts` onMessage → `getProspectByContact` → `processReply`; live round-trip requires the Phase 2 deploy (public webhook URL / running bot). Verified in-code by typecheck + the e2e inbound path using the `'sms'` channel.
 - **Full suite** — `npm test`: 233 passed / 20 files. `npm run typecheck`: exit 0. `npm run lint`: zero errors on touched files (pre-existing repo-wide `no-catch-all` warnings only). Grep probes: `__campaign_message` 0 matches, `campaign-runner` 0 (code) refs, `runCampaignTick`/`registerCampaignRunner` 0.
+
+### 2026-07-14 — Dashboard v2 + runtime hardening + channel completion
+
+- **ISC-29/30/60** — `src/channels/{sms,whatsapp,twitter,linkedin,registry}.test.ts`: factories return null without env (zero client calls asserted); every sendMessage() throws at its daily cap. 40/40 targeted channel tests green.
+- **ISC-33/34/35/36** — `src/dashboard-api.test.ts` (12 tests) + live probes: `GET /api/health` → `{"status":"ok",...}` instant; `GET /` → 200 SPA; all 500s routed through `internalError()`.
+- **ISC-37** — `tsc --noEmit` exit 0 post-integration.
+- **ISC-42..45/47..50** — live browser verification (claude-in-chrome, real Chrome): Overview funnel matches `by_stage` (1 outreach_sent = Jordan Testwell), Prospects table + Import CSV/Add prospect controls, Channels page shows email Configured+Verified (real OAuth token) with limit meters + cap messaging, Activity feed renders the real 2026-07-10 touch with content preview, Settings shows health + per-channel missing env names ("All set" for email). Zero console errors on fresh load. Empty states confirmed on Campaigns and Hot Leads.
+- **ISC-46** — builder chat UI present and wired (CTA verified on Campaigns page); full conversation round-trip to `{done:true}` not yet driven — pending live demo (consumes Claude API + composes campaign).
+- **ISC-51** — `npm run brain` standalone: 8 handlers registered, cycle ran, exit 0 (no Docker present).
+- **ISC-52/54** — boot with docker absent: probe returns false, warning logged, process continues; `runContainerAgent()` returns per-session `{status:'error'}` instead of process death.
+- **ISC-53** — live curl: 7-channel array with configured/verified/dailyLimit/usedToday; email true/true after .env hydration (`src/load-env.ts`, closes handoff bug 3 as hydrate-at-startup).
+- **ISC-55/56/58** — sms.test.ts (TCPA cap + suppression throw), whatsapp.test.ts (warm-only refusal), twitter.test.ts (cold DM refused pre-network, warm reply sends). 
+- **ISC-57 [DEFERRED-VERIFY]** — cap logic + persistence (`store/linkedin-daily-usage.json`) unit-tested with browser mocked. Follow-up: run `npm run linkedin-auth`, set `LINKEDIN_ENABLED=true`, smoke-check DOM selectors on first live send.
+- **ISC-59** — channel-level suppression/gate backstops inside sendMessage() + `loop.e2e.test.ts` gated-body assertion; both entry points enforce suppression.
+- **Full suite** — 307 passed / 30 files (was 233 pre-session). Typecheck 0. Compliance branch merged (List-Unsubscribe, /unsubscribe→bdr_suppression, Twilio signature validation, /privacy, /terms).

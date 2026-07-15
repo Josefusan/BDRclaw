@@ -15,6 +15,10 @@
  * with initBDRDatabase() alone.
  */
 
+// Env hydration MUST precede every other import — modules read process.env
+// at import time. See load-env.ts.
+import './load-env.js';
+
 import { initBDRDatabase } from './bdr-db.js';
 
 // Side-effect imports: register BDR action handlers with the brain.

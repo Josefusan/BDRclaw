@@ -54,7 +54,8 @@ vi.mock('./mount-security.js', () => ({
 // Mock the runtime probe — these tests exercise spawn/timeout behavior, not
 // runtime availability (the machine running the suite may not have Docker).
 vi.mock('./container-runtime.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./container-runtime.js')>();
+  const actual =
+    await importOriginal<typeof import('./container-runtime.js')>();
   return {
     ...actual,
     isContainerRuntimeAvailable: vi.fn(() => true),

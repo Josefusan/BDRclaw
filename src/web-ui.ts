@@ -8,6 +8,10 @@
  * Uses Node's built-in http module — no external web framework needed.
  */
 
+// Env hydration MUST precede every other import — modules read process.env
+// at import time. See load-env.ts.
+import './load-env.js';
+
 import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';

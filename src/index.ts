@@ -1,3 +1,7 @@
+// Env hydration MUST precede every other import — modules read process.env
+// at import time. See load-env.ts.
+import './load-env.js';
+
 import fs from 'fs';
 import path from 'path';
 
