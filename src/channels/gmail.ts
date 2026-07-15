@@ -26,6 +26,7 @@ import type {
   OnChatMetadata,
   OnInboundMessage,
 } from '../types.js';
+import { assertNotSuppressed } from './compliance.js';
 import { registerChannel } from './registry.js';
 import type { ChannelOpts } from './registry.js';
 
@@ -130,6 +131,10 @@ export class GmailChannel implements Channel {
   // ── BDR-specific send ─────────────────────────────────────────────────────
 
   async sendBDREmail(opts: GmailSendOptions): Promise<GmailSendResult> {
+    // ISC-59: channel-level suppression backstop — email must refuse opted-out
+    // contacts even if a future caller bypasses the entry-point checks.
+    assertNotSuppressed('email', opts.to);
+
     // ISC-30: daily limit throws — the send is never silently dropped.
     this.resetDailyCountsIfNeeded();
     if (this.msgsSentToday >= DAILY_MSG_LIMIT) {

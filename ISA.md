@@ -88,8 +88,8 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] ISC-20: The reply handler updates `prospect.stage` and records the touch with `direction: 'inbound'` and the classification in `reply_classification`.
 
 ### Campaign Builder
-- [ ] ISC-21: `POST /api/campaigns/builder/start` returns `{ sessionId, message }` with BDR Claude's opening question within 5 seconds.
-- [ ] ISC-22: `POST /api/campaigns/builder/chat` returns `{ done: true, campaign }` after sufficient context is gathered — campaign includes at minimum 3 steps across at least 2 channels.
+- [x] ISC-21: `POST /api/campaigns/builder/start` returns `{ sessionId, message }` with BDR Claude's opening question within 5 seconds.
+- [x] ISC-22: `POST /api/campaigns/builder/chat` returns `{ done: true, campaign }` after sufficient context is gathered — campaign includes at minimum 3 steps across at least 2 channels.
 - [ ] ISC-23: The built campaign's message templates contain no unfilled placeholders — the quality gate passes on all generated templates at build time.
 - [ ] ISC-24: `PATCH /api/campaigns/:id { status: "active" }` enrolls all active prospects and begins the loop processing them within one tick.
 
@@ -123,7 +123,7 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] ISC-43: Every dashboard page shows a meaningful empty state with a call-to-action when its data set is empty — no blank panels or spinner deadlocks.
 - [x] ISC-44: The Overview page renders pipeline funnel counts that match `GET /api/stats` `by_stage` values.
 - [x] ISC-45: The Prospects page supports search, stage filter, add-prospect, and CSV import against the existing `/api/prospects*` endpoints.
-- [ ] ISC-46: The campaign builder conversation is reachable from the dashboard UI and drives `/api/campaigns/builder/start` + `/chat` to a `{ done: true }` campaign.
+- [x] ISC-46: The campaign builder conversation is reachable from the dashboard UI and drives `/api/campaigns/builder/start` + `/chat` to a `{ done: true }` campaign.
 - [x] ISC-47: The Channels page shows, per channel, configured-vs-verified status and daily-limit meters sourced from `GET /api/channels/status` — env-var presence alone is never displayed as "working".
 - [x] ISC-48: The Activity page renders real `bdr_touches` rows including `direction` and `blocked` status.
 - [x] ISC-49: The Settings page lists, per channel, which required env vars are missing to activate it.
@@ -235,3 +235,5 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **ISC-57 [DEFERRED-VERIFY]** — cap logic + persistence (`store/linkedin-daily-usage.json`) unit-tested with browser mocked. Follow-up: run `npm run linkedin-auth`, set `LINKEDIN_ENABLED=true`, smoke-check DOM selectors on first live send.
 - **ISC-59** — channel-level suppression/gate backstops inside sendMessage() + `loop.e2e.test.ts` gated-body assertion; both entry points enforce suppression.
 - **Full suite** — 307 passed / 30 files (was 233 pre-session). Typecheck 0. Compliance branch merged (List-Unsubscribe, /unsubscribe→bdr_suppression, Twilio signature validation, /privacy, /terms).
+- **ISC-21/22/46 (live, 2026-07-14)** — builder round-trip driven against the running server with the real Claude API: `/builder/start` → sessionId + opening question (<5s); two chat turns → `{done:true}` with campaign "BDRclaw - Solo Founder Pipeline Builder", 7 steps spanning send_email / linkedin_connect / linkedin_dm / send_sms. Advisor gate: 401 shadow-key failure diagnosed (shell env key outranked .env by design) — restart without shell key succeeded; `{error:"Internal error"}` surfaced to client while the real 401 stayed server-side (ISC-36 behaving under real failure).
+- **ISC-59 (email backstop, 2026-07-14)** — `assertNotSuppressed('email', to)` added to `sendBDREmail()`; email now has the same channel-level suppression chokepoint as sms/whatsapp/twitter/linkedin. Typecheck 0; channels+e2e 43/43.
