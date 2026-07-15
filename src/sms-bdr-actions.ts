@@ -21,10 +21,15 @@ import {
 } from './bdr-brain.js';
 import type { ComposedOutbound } from './bdr-brain.js';
 import {
+  isProspectSuppressed,
   recordTouch,
   updateProspectNextAction,
   updateProspectStage,
 } from './bdr-db.js';
+import {
+  SMS_UNSOLICITED_TOUCH_CAP,
+  touchCounts,
+} from './channels/compliance.js';
 import { e164ToJid } from './channels/sms.js';
 import { SMSChannel } from './channels/sms.js';
 import type { BDRProspect } from './bdr-types.js';
@@ -55,18 +60,31 @@ registerActionHandler(
       return;
     }
 
-    const memory = readProspectMemory(prospect.id);
-    const touchCount = (memory.match(/send_sms/g) ?? []).length;
-
-    // Never send more than 2 unsolicited SMS — respect opt-out laws (TCPA in US)
-    if (touchCount >= 2) {
+    // Global suppression — defense in depth. Both entry points (loop
+    // processEnrollment, brain dispatchAction) check this before dispatch and
+    // the channel throws on it; this keeps the handler correct on its own too.
+    if (isProspectSuppressed(prospect)) {
       logger.info(
         { prospectId: prospect.id },
-        'send_sms: max SMS touches reached, skipping',
+        'send_sms: prospect suppressed — outbound skipped',
+      );
+      return;
+    }
+
+    // TCPA: never send more than 2 UNSOLICITED SMS. Counted from bdr_touches
+    // (the durable record), not from prose in the memory file. A prospect who
+    // has replied on SMS is solicited — the cap no longer applies.
+    const { inbound, outbound: touchCount } = touchCounts(prospect.id, 'sms');
+    if (inbound === 0 && touchCount >= SMS_UNSOLICITED_TOUCH_CAP) {
+      logger.info(
+        { prospectId: prospect.id, touchCount },
+        'send_sms: TCPA unsolicited-touch cap reached, sequence exhausted',
       );
       updateProspectStage(prospect.id, 'not_interested');
       return;
     }
+
+    const memory = readProspectMemory(prospect.id);
 
     // Prefer the composed + quality-gated message; fall back to the template.
     const message = resolveOutboundBody(composed, () =>

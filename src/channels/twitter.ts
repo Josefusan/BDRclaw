@@ -21,6 +21,7 @@ import type {
   OnChatMetadata,
   OnInboundMessage,
 } from '../types.js';
+import { assertNotSuppressed, assertWarmProspect } from './compliance.js';
 import { registerChannel } from './registry.js';
 
 const REPLY_POLL_MS = 5 * 60 * 1000; // 5 minutes
@@ -79,6 +80,18 @@ export class TwitterChannel implements Channel {
 
     const recipientId = jidToUserId(jid);
 
+    // Compliance backstop — enforced here so NO entry point can bypass it:
+    //   1. Global suppression list.
+    //   2. WARM/REPLY-ONLY: cold DMs are banned by X platform policy. A known
+    //      prospect must have DMed us first before any outbound is allowed.
+    // Both throw; the send is never silently dropped.
+    assertNotSuppressed('twitter', recipientId);
+    assertWarmProspect(
+      'twitter',
+      recipientId,
+      'X cold DMs are policy-banned — twitter is a warm/reply-only channel.',
+    );
+
     // Create a new DM conversation (or continue existing one)
     await this.client.v2.sendDmToParticipant(recipientId, { text });
 
@@ -87,6 +100,15 @@ export class TwitterChannel implements Channel {
       { jid, recipientId, dmsSentToday: this.dmsSentToday },
       'Twitter DM sent',
     );
+  }
+
+  /** Resolve an @handle to a numeric user id via the channel's API client. */
+  async resolveUserId(username: string): Promise<string> {
+    if (!this.connected) throw new Error('Twitter channel not connected');
+    const user = await this.client.v2.userByUsername(
+      username.replace(/^@/, ''),
+    );
+    return user.data.id;
   }
 
   isConnected(): boolean {
@@ -180,6 +202,19 @@ export function jidToUserId(jid: string): string {
   return jid.replace(/^twitter:/, '');
 }
 
+// ── Active instance ───────────────────────────────────────────────────────────
+// Action handlers (twitter-bdr-actions.ts) send through the live channel so
+// the daily cap and warm-only enforcement apply to every send path. index.ts
+// exposes some channels on globalThis, but twitter isn't among them — the
+// factory captures its own instance instead.
+
+let activeInstance: TwitterChannel | null = null;
+
+/** The connected TwitterChannel instance, or null when absent/disconnected. */
+export function getActiveTwitterChannel(): TwitterChannel | null {
+  return activeInstance?.isConnected() ? activeInstance : null;
+}
+
 // ── Self-registration ─────────────────────────────────────────────────────────
 
 registerChannel('twitter', (opts) => {
@@ -197,5 +232,6 @@ registerChannel('twitter', (opts) => {
     return null;
   }
 
-  return new TwitterChannel(opts.onMessage, opts.onChatMetadata);
+  activeInstance = new TwitterChannel(opts.onMessage, opts.onChatMetadata);
+  return activeInstance;
 });

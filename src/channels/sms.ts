@@ -32,6 +32,7 @@ import type {
   OnChatMetadata,
   OnInboundMessage,
 } from '../types.js';
+import { assertNotSuppressed, assertSmsTcpaCap } from './compliance.js';
 import { registerChannel } from './registry.js';
 
 const DAILY_MSG_LIMIT = parseInt(process.env.SMS_DAILY_MSG_LIMIT ?? '100', 10);
@@ -80,9 +81,18 @@ export class SMSChannel implements Channel {
       throw new Error(`SMS daily message limit reached (${DAILY_MSG_LIMIT})`);
     }
 
+    const to = jidToE164(jid);
+
+    // Compliance backstop — enforced here so NO entry point can bypass it:
+    //   1. Global suppression list (opted-out contacts never receive SMS).
+    //   2. TCPA: max 2 unsolicited outbound SMS per prospect; a prospect who
+    //      has replied on SMS is solicited and may be messaged further.
+    // Both throw; the send is never silently dropped.
+    assertNotSuppressed('sms', to);
+    assertSmsTcpaCap(to);
+
     // Hard limit: SMS messages should be under 160 chars for single-part delivery.
     // Twilio handles concatenation for longer messages automatically.
-    const to = jidToE164(jid);
     await this.client.messages.create({
       from: this.fromNumber,
       to,
