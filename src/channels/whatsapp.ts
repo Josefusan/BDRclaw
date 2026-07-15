@@ -28,6 +28,7 @@ import type {
   OnChatMetadata,
   OnInboundMessage,
 } from '../types.js';
+import { assertNotSuppressed, assertWarmProspect } from './compliance.js';
 import { registerChannel } from './registry.js';
 
 const DAILY_MSG_LIMIT = parseInt(
@@ -83,6 +84,21 @@ export class WhatsAppChannel implements Channel {
     }
 
     const to = jidToE164WhatsApp(jid);
+
+    // Compliance backstop — enforced here so NO entry point can bypass it:
+    //   1. Global suppression list.
+    //   2. WARM-ONLY: WhatsApp is never a cold channel (Meta paused US
+    //      marketing templates; unsolicited business messaging risks the
+    //      number). A known prospect must have messaged us inbound on
+    //      WhatsApp at least once before any outbound is allowed.
+    // Both throw; the send is never silently dropped.
+    const bareNumber = to.replace(/^whatsapp:/, '');
+    assertNotSuppressed('whatsapp', bareNumber);
+    assertWarmProspect(
+      'whatsapp',
+      bareNumber,
+      'WhatsApp is warm/reply-only — the prospect must message us first.',
+    );
 
     await this.client.messages.create({
       from: this.fromNumber,

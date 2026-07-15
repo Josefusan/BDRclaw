@@ -32,9 +32,12 @@ import type {
   OnChatMetadata,
   OnInboundMessage,
 } from '../types.js';
+import { assertNotSuppressed } from './compliance.js';
+import { LinkedInDailyUsage } from './linkedin-usage.js';
 import { registerChannel } from './registry.js';
 
 const SESSION_FILE = path.join(STORE_DIR, 'linkedin-session.json');
+const USAGE_FILE = path.join(STORE_DIR, 'linkedin-daily-usage.json');
 const REPLY_POLL_MS = 10 * 60 * 1000; // 10 minutes
 
 const DAILY_DM_LIMIT = parseInt(
@@ -53,15 +56,44 @@ export class LinkedInChannel implements Channel {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private connected = false;
-  private dmsSentToday = 0;
-  private connectionsSentToday = 0;
-  private lastResetDate = '';
   private pollTimer?: ReturnType<typeof setInterval>;
+
+  /**
+   * Daily caps persisted to disk (STORE_DIR/linkedin-daily-usage.json) so a
+   * process restart can NEVER reset the counters — the caps are the account's
+   * ban-prevention line, not a soft preference.
+   */
+  private readonly usage: LinkedInDailyUsage;
+
+  /**
+   * @internal — test seams. Unit tests replace these to exercise cap logic
+   * without a real browser (live LinkedIn automation is DEFERRED-VERIFY until
+   * an authenticated session exists via setup/linkedin-auth.ts).
+   */
+  _dmAutomation: (
+    page: Page,
+    profileUrl: string,
+    text: string,
+  ) => Promise<void> = performSendDM;
+  _connectAutomation: (
+    page: Page,
+    profileUrl: string,
+    note?: string,
+  ) => Promise<void> = performConnectionRequest;
 
   constructor(
     private onMessage: OnInboundMessage,
     private onChatMetadata: OnChatMetadata,
-  ) {}
+    opts?: { usageFile?: string },
+  ) {
+    this.usage = new LinkedInDailyUsage(opts?.usageFile ?? USAGE_FILE);
+  }
+
+  /** @internal — for tests only: inject a fake browser context. */
+  _setTestState(context: BrowserContext, connected = true): void {
+    this.context = context;
+    this.connected = connected;
+  }
 
   async connect(): Promise<void> {
     if (!fs.existsSync(SESSION_FILE)) {
@@ -100,18 +132,23 @@ export class LinkedInChannel implements Channel {
     if (!this.connected || !this.context) {
       throw new Error('LinkedIn channel not connected');
     }
-    this.resetDailyCountsIfNeeded();
 
-    if (this.dmsSentToday >= DAILY_DM_LIMIT) {
+    // Persisted daily cap — read fresh from disk, so restarts never reset it.
+    if (this.usage.read().dms >= DAILY_DM_LIMIT) {
       throw new Error(`LinkedIn daily DM limit reached (${DAILY_DM_LIMIT})`);
     }
 
     const profileUrl = jidToProfileUrl(jid);
+
+    // Compliance backstop: opted-out contacts never receive LinkedIn DMs,
+    // regardless of which entry point requested the send.
+    assertNotSuppressed('linkedin', profileUrl);
+
     const page = await this.context.newPage();
     try {
-      await sendLinkedInDM(page, profileUrl, text);
-      this.dmsSentToday++;
-      logger.info({ jid, dmsSentToday: this.dmsSentToday }, 'LinkedIn DM sent');
+      await this._dmAutomation(page, profileUrl, text);
+      const { dms } = this.usage.recordDm();
+      logger.info({ jid, dmsSentToday: dms }, 'LinkedIn DM sent');
     } finally {
       await page.close();
     }
@@ -124,20 +161,23 @@ export class LinkedInChannel implements Channel {
     if (!this.connected || !this.context) {
       throw new Error('LinkedIn channel not connected');
     }
-    this.resetDailyCountsIfNeeded();
 
-    if (this.connectionsSentToday >= DAILY_CONN_LIMIT) {
+    // Persisted daily cap — read fresh from disk, so restarts never reset it.
+    if (this.usage.read().connections >= DAILY_CONN_LIMIT) {
       throw new Error(
         `LinkedIn daily connection limit reached (${DAILY_CONN_LIMIT})`,
       );
     }
 
+    // Compliance backstop: never invite an opted-out contact.
+    assertNotSuppressed('linkedin', profileUrl);
+
     const page = await this.context.newPage();
     try {
-      await sendConnectionRequest(page, profileUrl, note);
-      this.connectionsSentToday++;
+      await this._connectAutomation(page, profileUrl, note);
+      const { connections } = this.usage.recordConnection();
       logger.info(
-        { profileUrl, connectionsSentToday: this.connectionsSentToday },
+        { profileUrl, connectionsSentToday: connections },
         'LinkedIn connection request sent',
       );
     } finally {
@@ -243,15 +283,6 @@ export class LinkedInChannel implements Channel {
     }
   }
 
-  private resetDailyCountsIfNeeded(): void {
-    const today = new Date().toISOString().slice(0, 10);
-    if (today !== this.lastResetDate) {
-      this.dmsSentToday = 0;
-      this.connectionsSentToday = 0;
-      this.lastResetDate = today;
-    }
-  }
-
   private async cleanup(): Promise<void> {
     if (this.context) {
       await this.context.close().catch(() => {});
@@ -266,7 +297,7 @@ export class LinkedInChannel implements Channel {
 
 // ── Automation helpers ────────────────────────────────────────────────────────
 
-async function sendLinkedInDM(
+async function performSendDM(
   page: Page,
   profileUrl: string,
   text: string,
@@ -304,7 +335,7 @@ async function sendLinkedInDM(
   await page.waitForTimeout(1000);
 }
 
-async function sendConnectionRequest(
+async function performConnectionRequest(
   page: Page,
   profileUrl: string,
   note?: string,

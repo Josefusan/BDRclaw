@@ -27,6 +27,15 @@ import type { ChannelOpts } from './registry.js';
 
 const REPLY_POLL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Channel-level daily send cap (ISC-30). Per-account BDR limits live in
+// bdr_accounts (enforced in gmail-bdr-actions); this is the process-wide
+// hard ceiling. Default is deliberately generous so live behavior is
+// unchanged unless the operator sets GMAIL_DAILY_MSG_LIMIT explicitly.
+const DAILY_MSG_LIMIT = parseInt(
+  process.env.GMAIL_DAILY_MSG_LIMIT ?? '500',
+  10,
+);
+
 export interface GmailSendOptions {
   to: string;
   subject: string;
@@ -50,6 +59,8 @@ export class GmailChannel implements Channel {
   private activeIndices: number[] = [];
   private pollTimer?: ReturnType<typeof setInterval>;
   private lastCheckAt: Record<number, number> = {};
+  private msgsSentToday = 0;
+  private lastResetDate = '';
 
   constructor(
     private onMessage: OnInboundMessage,
@@ -107,6 +118,12 @@ export class GmailChannel implements Channel {
   // ── BDR-specific send ─────────────────────────────────────────────────────
 
   async sendBDREmail(opts: GmailSendOptions): Promise<GmailSendResult> {
+    // ISC-30: daily limit throws — the send is never silently dropped.
+    this.resetDailyCountsIfNeeded();
+    if (this.msgsSentToday >= DAILY_MSG_LIMIT) {
+      throw new Error(`Gmail daily message limit reached (${DAILY_MSG_LIMIT})`);
+    }
+
     const idx =
       opts.accountIndex ?? this.activeIndices[0] ?? this.getFallbackIndex();
     if (!idx) throw new Error('No Gmail account configured');
@@ -137,8 +154,17 @@ export class GmailChannel implements Channel {
     const messageId = res.data.id!;
     const threadId = res.data.threadId!;
 
+    this.msgsSentToday++;
     logger.info({ to: opts.to, messageId, accountIndex: idx }, 'Email sent');
     return { messageId, threadId };
+  }
+
+  private resetDailyCountsIfNeeded(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== this.lastResetDate) {
+      this.msgsSentToday = 0;
+      this.lastResetDate = today;
+    }
   }
 
   /**
