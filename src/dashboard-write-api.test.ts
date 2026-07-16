@@ -35,11 +35,13 @@ import {
   _initBDRTestDatabase,
   addProspect,
   getCampaignById,
+  getCampaignSteps,
   getProspectById,
   getSuppressionList,
   isProspectSuppressed,
   recordTouch,
   upsertCampaign,
+  upsertCampaignStep,
 } from './bdr-db.js';
 import { registerActionHandler } from './bdr-brain.js';
 import { stopAgenticLoop } from './agents/loop.js';
@@ -326,5 +328,27 @@ describe('PATCH /api/campaigns/:id status', () => {
     const res = await patch(`/api/campaigns/${id}`, { status: 'nonsense' });
     expect(res.status).toBe(400);
     expect(getCampaignById(id)!.status).toBe('active');
+  });
+
+  it('activating a campaign preserves its steps (regression: upsertCampaign must not cascade-delete)', async () => {
+    // Regression guard for the INSERT OR REPLACE → ON DELETE CASCADE bug that
+    // wiped every step on any campaign update, leaving the loop nothing to send.
+    const id = seedCampaign('draft');
+    upsertCampaignStep({
+      id: `${id}-s1`,
+      campaign_id: id,
+      step_number: 1,
+      action_type: 'send_sms',
+      delay_days: 0,
+      template: 'Hi {{firstName}}',
+      condition: 'always',
+    } as never);
+    expect(getCampaignSteps(id)).toHaveLength(1);
+
+    const res = await patch(`/api/campaigns/${id}`, { status: 'active' });
+    expect(res.status).toBe(200);
+    expect(getCampaignById(id)!.status).toBe('active');
+    // The step must survive the activation.
+    expect(getCampaignSteps(id)).toHaveLength(1);
   });
 });

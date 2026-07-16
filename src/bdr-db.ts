@@ -867,12 +867,27 @@ export function getRecentImportJobs(limit = 10): ImportJob[] {
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
 export function upsertCampaign(campaign: Campaign): void {
+  // ON CONFLICT DO UPDATE, NOT `INSERT OR REPLACE`. REPLACE is delete-then-
+  // insert, which cascades through `bdr_campaign_steps`' ON DELETE CASCADE FK
+  // and silently wipes every step — so updating a campaign (activate/pause/
+  // rename from the dashboard) would leave a stepless campaign the loop can
+  // never send from. DO UPDATE mutates the row in place, leaving steps and
+  // enrollments intact. (created_at is preserved on update.)
   db.prepare(
     `
-    INSERT OR REPLACE INTO bdr_campaigns
+    INSERT INTO bdr_campaigns
       (id, name, description, icp_description, value_proposition,
        tone, jitter_minutes, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      description = excluded.description,
+      icp_description = excluded.icp_description,
+      value_proposition = excluded.value_proposition,
+      tone = excluded.tone,
+      jitter_minutes = excluded.jitter_minutes,
+      status = excluded.status,
+      updated_at = excluded.updated_at
   `,
   ).run(
     campaign.id,
