@@ -10,14 +10,15 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Full install: the build step (tsc) needs devDependencies. Pruned after build.
+RUN npm ci
 
 # Install Playwright Chromium
 RUN npx playwright install chromium --with-deps
 
 COPY . .
 
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
 
 # Store directory for SQLite, tokens, session files
 VOLUME ["/app/store"]
