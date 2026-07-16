@@ -16,6 +16,9 @@
 ### 🎯 THE deploy is one step from done
 **Run `railway login` (interactive — only you can), then follow `docs/DEPLOY-RAILWAY.md`.** Everything else is staged & verified. Generate `BDR_DASHBOARD_PASSWORD` + `BDR_SESSION_SECRET` with openssl first (runbook step 1).
 
+### ⚠️ Critical bug FOUND + FIXED this session (would have broken the product live)
+`upsertCampaign` used `INSERT OR REPLACE`, cascade-deleting all campaign steps on any update (activate/pause/rename from the dashboard). A campaign would enroll prospects but have zero steps → the loop sends nothing. Caught by a war-room agent's ISC-24 test (my own browser check was a false green — I only saw the "enrolled" toast). Fixed to `ON CONFLICT DO UPDATE`, reproduced + regression-tested. Commit `9290a94`. **Lesson: verify the post-condition (campaign still has steps), not the visible signal (toast).**
+
 ### Known product bugs (not deploy blockers — logged as ISC-93/94/95 in ISA)
 - ISC-93: `send_meeting_link` bypasses the daily send-limit accounting.
 - ISC-94: interested-branch inline reply is dead at the `routeInboundToReplyHandler` seam — the calendar link only sends on the next daily brain cycle (up-to-24h stall on the hottest lead).
