@@ -21,8 +21,9 @@ COPY . .
 
 RUN npm run build && npm prune --omit=dev
 
-# Store directory for SQLite, tokens, session files
-VOLUME ["/app/store"]
+# SQLite, tokens, and session files live under /app/store — persistence is
+# provided by a Railway Volume mounted there (Railway's builder rejects a
+# Dockerfile VOLUME instruction; the mount is configured on the service).
 
 EXPOSE 3000
 
