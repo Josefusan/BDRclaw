@@ -1,6 +1,35 @@
 # BDRclaw — Session Hand-off
 
-> **Last updated:** 2026-07-15 (resume session) · **Branch:** `main` · **Head:** `552a9e9`
+> **Last updated:** 2026-07-16 · **Branch:** `main` · **Head:** `34b79e1`
+
+## ✅ Done 2026-07-16 (auth + deploy prep + war-room sweep)
+
+| Item | Detail |
+|------|--------|
+| **Dashboard auth SHIPPED** | `BDR_DASHBOARD_PASSWORD` gates everything; HMAC session cookie (random secret auto-persisted to `store/session-secret`, NOT password-derived); rate-limited login; webhooks/health/legal pages exempt. Live-verified. |
+| **Deploy fully staged** | Dockerfile fixed (devDeps for tsc → build → prune; **first build would have failed** without this), tzdata added, Chromium cut (~700MB), `PORT` honored, `healthcheckPath` set, Gmail tokens seed from `GMAIL_TOKEN_<N>_B64`. Runbook: `docs/DEPLOY-RAILWAY.md`. |
+| **War-room: 4 Fable agents** | +20 tests (loop lifecycle, HubSpot self-disable, CRM pull, full booking-flow e2e). Suite **365/365**. |
+| **Security audit + fixes** | Adversarial Fable agent (Cato-substitute). Fixed: webhook fails CLOSED on deploy w/o signing key (was pipeline-injection hole), session secret independent-random, rate-limiter bounded, constant-time compares, same-origin CORS. `searchProspects` SQLi flag = false alarm (parameterized). |
+| **Live-verified in browser** | Builder chat → `done:true` campaign (ISC-75), activate→enroll (ISC-70/24), all zero console errors. |
+| Env bug fixed | `.env`/`.env.example` said `HUBSPOT_API_KEY`, code reads `HUBSPOT_ACCESS_TOKEN` — adapter could never enable from the template. |
+
+### 🎯 THE deploy is one step from done
+**Run `railway login` (interactive — only you can), then follow `docs/DEPLOY-RAILWAY.md`.** Everything else is staged & verified. Generate `BDR_DASHBOARD_PASSWORD` + `BDR_SESSION_SECRET` with openssl first (runbook step 1).
+
+### Known product bugs (not deploy blockers — logged as ISC-93/94/95 in ISA)
+- ISC-93: `send_meeting_link` bypasses the daily send-limit accounting.
+- ISC-94: interested-branch inline reply is dead at the `routeInboundToReplyHandler` seam — the calendar link only sends on the next daily brain cycle (up-to-24h stall on the hottest lead).
+- ISC-95: HubSpot `mapStage()` is dead code — no deal-pipeline stage is written.
+
+### Still open / blocked
+- ISC-90/91: live Railway probes — blocked on `railway login`.
+- ISC-71: GHL live pull — needs Joseph's GHL creds.
+- ISC-74: war-room perpetual loop — UNBUILT (ask Joseph if still wanted).
+- Cato cross-vendor audit — Tailscale logged out 4 sessions running.
+
+---
+
+## Previous session (2026-07-15 resume)
 
 ## ✅ Done 2026-07-15 (resume session — booking detection + verification sweep)
 

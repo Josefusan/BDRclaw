@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE (session complete 2026-07-15; open: ISC-70/74/75 + deploy-blocked) | **Updated:** 2026-07-15T14:40:00Z | **Iteration:** v1.4 — booking detection + session-resume verification (ISC-80..84) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
+> **Tier:** E4 | **Status:** EXECUTE (2026-07-16; auth shipped, deploy staged — blocked only on `railway login`; open: ISC-74 unbuilt, ISC-93/94/95 known bugs) | **Updated:** 2026-07-16T18:20:00Z | **Iteration:** v1.5 — dashboard auth + Railway deploy prep + war-room test/security sweep (ISC-85..92) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -60,16 +60,16 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 ## Criteria
 
 ### Core Loop — Must Never Break
-- [ ] ISC-1: The agentic loop (`src/agents/loop.ts`) starts without error, logs a heartbeat every tick, and recovers automatically after any single-prospect processing error without stopping.
-- [ ] ISC-2: The loop processes all due campaign enrollments on each tick without skipping prospects whose neighbors errored.
-- [ ] ISC-3: Loop errors are logged with `{ err, prospectId, phase }` structured fields — never swallowed silently.
-- [ ] ISC-4: The loop can be stopped cleanly via `SIGTERM`/`SIGINT` without leaving a prospect in a half-sent state.
+- [x] ISC-1: The agentic loop (`src/agents/loop.ts`) starts without error, logs a heartbeat every tick, and recovers automatically after any single-prospect processing error without stopping. *(2026-07-16: loop.lifecycle.test.ts — tick 1 fails prospect #2's send, tick 2 processes it; 2 distinct heartbeats asserted.)*
+- [x] ISC-2: The loop processes all due campaign enrollments on each tick without skipping prospects whose neighbors errored. *(loop.lifecycle.test.ts — 3 enrolled, #2 throws, #1/#3 still get touches + enrollment advance.)*
+- [x] ISC-3: Loop errors are logged with `{ err, prospectId, phase }` structured fields — never swallowed silently. *(loop.lifecycle.test.ts asserts both compose and send phase catch shapes.)*
+- [x] ISC-4: The loop can be stopped cleanly via `SIGTERM`/`SIGINT` without leaving a prospect in a half-sent state. *(loop.lifecycle.test.ts invokes the registered SIGTERM listener; mid-flight stop leaves zero half-sends, in-flight tick completes.)*
 
 ### BDR Agent — Message Generation
 - [x] ISC-5: `BDRAgent.compose()` returns a personalized message that references the prospect's `name`, `company`, or `title` — never sends a template with unfilled `{{placeholder}}` tokens. *(2026-07-08: composed message now reaches the wire by contract; e2e test asserts no `{{` leak.)*
 - [x] ISC-6: The agent reads the full prospect memory (stage, previous touches, enrichment) before composing — it never repeats a message already in the touch history.
 - [x] ISC-7: The agent selects the appropriate channel for the current campaign step — it does not email when the step is `linkedin_dm`.
-- [ ] ISC-8: The agent applies send-time jitter of ±`campaign.jitter_minutes` to every outbound message.
+- [x] ISC-8: The agent applies send-time jitter of ±`campaign.jitter_minutes` to every outbound message. *(2026-07-16: computeStepDueAt extracted + unit-tested — bounds at random 0/0.5/~1, 100 random samples all within ±jitter, behavioral test proves the loop consults the window.)*
 
 ### Quality Gate — Every Message Audited Before Send
 - [x] ISC-9: `QualityGate.review()` is called on every outbound message before it reaches the channel's `sendMessage()`. *(2026-07-15: loop.ts:244→289; loop.e2e.test.ts "Break B" drives compose→gate→handler.)*
@@ -91,13 +91,13 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] ISC-21: `POST /api/campaigns/builder/start` returns `{ sessionId, message }` with BDR Claude's opening question within 5 seconds.
 - [x] ISC-22: `POST /api/campaigns/builder/chat` returns `{ done: true, campaign }` after sufficient context is gathered — campaign includes at minimum 3 steps across at least 2 channels.
 - [ ] ISC-23: [DROPPED — see Decisions 2026-07-15: builder templates intentionally carry `{{placeholders}}` filled at compose time; the gate guards the wire (loop.e2e), not build time]
-- [ ] ISC-24: `PATCH /api/campaigns/:id { status: "active" }` enrolls all active prospects and begins the loop processing them within one tick.
+- [x] ISC-24: `PATCH /api/campaigns/:id { status: "active" }` enrolls all active prospects and begins the loop processing them within one tick. *(2026-07-16: loop.lifecycle.test.ts activate→enrollAllActiveProspects→runTickOnce dispatches the prospect; live browser activate enrolled 1 prospect.)*
 
 ### CRM Sync
 - [x] ISC-25: Every prospect stage change triggers `pushToCRMs()` from inside `updateProspectStage()` — the single authoritative sync path; the push is deliberately best-effort (detached, failure-swallowing) so a CRM outage can never block a stage change. *(refined 2026-07-15 per evidence sweep — "same logical operation, awaited" contradicted ISC-27's non-blocking requirement; bdr-db.ts:641-655.)*
-- [ ] ISC-26: `POST /api/crm/pull` returns `{ contacts, count }` and each returned contact maps to `CRMContact` shape without TypeScript errors.
+- [x] ISC-26: `POST /api/crm/pull` returns `{ contacts, count }` and each returned contact maps to `CRMContact` shape without TypeScript errors. *(2026-07-16: crm-pull-api.test.ts — count===contacts.length, empty-adapter clean, failing-adapter resilience via allSettled.)*
 - [x] ISC-27: CRM push failure does NOT block the prospect's stage change — it logs a warning and continues. *(registry.ts allSettled + gohighlevel.test.ts "push logs a warning and does not throw on API error (ISC-27)".)*
-- [ ] Anti: ISC-28: Removing `HUBSPOT_ACCESS_TOKEN` from `.env` results in zero HubSpot API calls on the next run — the adapter self-disables cleanly.
+- [x] Anti: ISC-28: Removing `HUBSPOT_ACCESS_TOKEN` from `.env` results in zero HubSpot API calls on the next run — the adapter self-disables cleanly. *(2026-07-16: hubspot.test.ts — token absent → not registered, zero https.request/fetch calls.)*
 
 ### Channels — Core Delivery
 - [x] ISC-29: All seven channels (`email`, `linkedin`, `twitter`, `instagram`, `telegram`, `whatsapp`, `sms`) self-register when their respective env vars are present.
@@ -155,9 +155,9 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 ### Dashboard — Fully Functional (added 2026-07-15)
 - [x] ISC-68: `POST /api/loop/start` and `POST /api/loop/stop` control the agentic loop from the dashboard; `/api/health` reflects the true state; UI toggle works. *(2026-07-15 resume: live curl round-trip running true→false; honest 409 when no channels; dashboard-write-api tests.)*
 - [x] ISC-69: `GET /api/prospects/:id` returns the prospect with full touch timeline; clicking a prospect row opens a detail drawer rendering it. *(live curl + real-Chrome drawer screenshot: header, stage control, contact, timeline with actual sent email.)*
-- [ ] ISC-70: Campaigns can be activated AND paused from the UI; state round-trips through PATCH. *(pause tested; activate→enrollment untested — blocked on a real campaign existing; unblocks with ISC-75 demo.)*
-- [DEFERRED-VERIFY] ISC-71: The CRM page lists registered adapters (incl. GoHighLevel when configured) and manual pull/push works from the UI. *(2026-07-15 resume: GHL card + env hint added and screenshot-verified; live pull needs Joseph's GHL creds — follow-up: set GHL_API_KEY/GHL_LOCATION_ID and click Pull from CRM.)*
-- [ ] ISC-75: The campaign-builder chat driven from the browser UI (not curl) produces a `done:true` campaign — live probe. *(consumes Claude API + creates a campaign; run as the demo that also closes ISC-70/24.)*
+- [x] ISC-70: Campaigns can be activated AND paused from the UI; state round-trips through PATCH. *(2026-07-16: live browser — activated the builder-made campaign, toast "Campaign activated · 1 prospect enrolled", pill Draft→Active, button Activate→Pause.)*
+- [DEFERRED-VERIFY] ISC-71: The CRM page lists registered adapters (incl. GoHighLevel when configured) and manual pull/push works from the UI. *(2026-07-15 resume: GHL card + env hint added and screenshot-verified; ISC-26 /api/crm/pull contract now unit-tested (crm-pull-api.test.ts). Live pull with real creds still needs Joseph's GHL API key — follow-up: set GHL_API_KEY/GHL_LOCATION_ID and click Pull from CRM.)*
+- [x] ISC-75: The campaign-builder chat driven from the browser UI (not curl) produces a `done:true` campaign — live probe. *(2026-07-16: typed the offer into the Campaigns builder chat in real Chrome; BDR Claude returned "BDRclaw - Solo Founder Pipeline Builder" as a Draft campaign, zero console errors.)*
 
 - [x] ISC-77: Prospect stage can be changed from the UI (detail drawer control) and round-trips through `updateProspectStage` — the single authoritative CRM-push path. *(live PATCH replied→restore round-trip; enum validation on bogus stage; drawer control screenshot.)*
 - [x] ISC-78: The Settings page shows the suppression list entries and supports manually adding a contact to suppression from the UI. *(live POST /api/suppression 201 + entry listed; Settings markup renders suppressionEntries + manual-add form, index.html:726-742.)*
@@ -183,6 +183,11 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [ ] ISC-90: The deployed Railway service answers `GET /api/health` 200 on its public URL and serves `/login` (not the dashboard) to an unauthenticated browser. *(blocked on `railway login` — Joseph.)*
 - [ ] ISC-91: SQLite + `store/` live on a Railway volume mounted at `/app/store` — data survives a redeploy. *(blocked on `railway login` — Joseph.)*
 - [x] ISC-92: The web server honors Railway's injected `PORT` env (falls back to `BDR_WEB_PORT`, then 3000). *(web-ui.ts:124-127.)*
+
+### Known Product Bugs — found by war-room agents 2026-07-16 (not deploy blockers)
+- [ ] ISC-93: `send_meeting_link` must respect the daily send limit — it currently never checks `account.sends_today >= daily_send_limit` nor calls `incrementAccountSends`, so meeting-link emails are invisible to the quota (deliverability leak). *(agent D finding; gmail-bdr-actions.ts.)*
+- [ ] ISC-94: The interested-branch inline reply is dead at the integration seam — `routeInboundToReplyHandler` (index.ts) fire-and-forgets `processReply` and discards its `ReplyResult`, so the calendar-link reply and question-answers are composed but never sent; the link only goes out on the next daily brain cycle. *(agent D finding — the hottest-lead path has an up-to-24h stall.)*
+- [ ] ISC-95: HubSpot `mapStage()`/`DEFAULT_STAGE_MAP` is dead code — `push()` never calls it, so no deal-pipeline stage is written despite the file header claiming it does. *(agent B finding; hubspot.ts.)*
 
 ### War Room Operations (added 2026-07-15)
 - [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph. *(2026-07-15 resume: UNBUILT — this is a scope gap, not an environment blocker; no loop artifact exists in docs/, scripts/, or launchd/. Surfaced to Joseph: confirm whether this is still wanted before building.)*
@@ -259,11 +264,17 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - **2026-07-15 (session resume)** — refined: ISC-25 reworded. "Within the same logical operation (not async-fire-and-forget)" contradicted ISC-27 (push failure must never block the stage change). Decided semantics: push is triggered synchronously-in-code-path from `updateProspectStage` but detached and failure-swallowing. `updateProspectStage` stays sync (better-sqlite3); awaiting the push would ripple async through every caller for no user-visible gain.
 - **2026-07-15 (session resume)** — CSRF guard design: Origin-header check on all POST/PATCH (mismatch → 403). Origin-less requests pass — that is how Calendly/Twilio/mail-provider servers call us, and local curl. Browser CSRF is closed (browsers always attach Origin to cross-origin POSTs). Residual: the dashboard has NO auth — acceptable only while bound to 127.0.0.1. **Auth must ship with (or before) the Railway public deploy.**
 - **2026-07-15 (session resume)** — instagram_dm + whatsapp_dm handlers registered (warm-only enforced inside each channel's sendMessage). Root cause of the seam: campaign-builder's action_type vocabulary grew faster than the handler registry, and nothing failed loudly when they diverged — `getActionHandler()` returning undefined just skipped the send.
+- **2026-07-16** — Dashboard auth shipped (ISC-85..92). Design: password-gated (BDR_DASHBOARD_PASSWORD), stateless HMAC session cookie (no session table — survives restarts, no dependency), route-level gate placed after the CSRF guard. Exemptions are the set of callers that structurally cannot log in: signature-verified webhooks (Calendly, Zoom), CAN-SPAM pages, Railway health check. Auth is OFF when the password is unset so local dev is unchanged.
+- **2026-07-16** — Deploy hardening decided against the advisor's Railway gotchas: PORT honored (not set by us), tzdata in image (else brain schedule silently runs UTC), healthcheckPath so a half-dead app isn't promoted, Playwright Chromium CUT from the image (~700MB — LinkedIn's authenticated session only exists on the operator's Mac, so server-side Chromium is dead weight), Gmail tokens seeded from GMAIL_TOKEN_<N>_B64 env so a fresh volume has working email on first boot.
+- **2026-07-16** — Security audit (Fable adversarial agent, Cato-substitute while Tailscale down) fixes applied: webhook fails CLOSED on a deploy without a signing key (was: trust-the-body — an unauthenticated pipeline-injection vector); session secret is random+persisted, never password-derived (a leaked password can no longer mint cookies offline); rate-limiter map bounded; constant-time Calendly compare; same-origin-reflect CORS (no wildcard). The searchProspects SQL-injection flag was checked and is a false alarm — fully parameterized. 8-day-old worktree lock cleaned up.
+- **2026-07-16** — War-room fleet: 4× Fable agents, partitioned by new-file ownership (two wrote to main tree, two to worktrees; one CRM task ran twice — kept the main-tree copy, discarded the worktree duplicate). The one source edit an agent made (loop.ts computeStepDueAt extraction) was reviewed as behavior-preserving before integration. Cato itself still unrun (Tailscale logged out four sessions running) — this session's work is cross-vendor-unattested, but the adversarial Fable audit stands in.
 
 
 ---
 
 ## Changelog
+
+- **2026-07-16** — conjectured: "the dashboard just needed a login gate before it could go public." refuted_by: an adversarial audit of the freshly-written auth showed the gate was necessary but not sufficient — the Calendly webhook (auth-exempt by design) trusted its body whenever the signing key was unset, so a public deploy with the gate ON but the webhook key not-yet-configured was an unauthenticated pipeline-injection hole; and the session secret was derived from the dashboard password, making a leaked password an offline cookie-forge key. learned: adding an auth boundary creates a new attack surface at every hole you deliberately punch through it (webhooks, health, legal pages) — each exemption needs its own authentication (signature), and secrets must be independent so one leak isn't two. A login form is the beginning of auth, not the end. criterion_now: ISC-87 (exemptions authenticate themselves), plus the fail-closed webhook and independent-random session secret from the security fixes.
 
 - **2026-07-15** — conjectured: "the meeting-booking loop was closed" — sending the Calendly link and flipping `stage: meeting_booked` was treated as the end of the funnel, and the dashboard's flagship "Meetings booked" stat counted it. refuted_by: an IterativeDepth trace of the full chain (outbound → reply → interested → link → booked → CRM → notify) found no booking-detection mechanism anywhere — `meeting_booked` was written at link-*send* (gmail-bdr-actions.ts:286), so the metric counted intentions, not meetings; the advisor further refuted the proposed reply-classification fix (text intent "I'll grab a slot" is not a booking; a false positive silently drops the prospect out of follow-up and loses the meeting). learned: a pipeline stage must be written by the system that *observes* the event, not the system that *hopes* for it — hard signals (Calendly `invitee.created`) book meetings, soft signals (message text) only stage intent; and single-writer invariants are only real when an executable test enforces them. criterion_now: ISC-80 (link send → `meeting_link_sent`, never `meeting_booked`), ISC-81 (webhook is the sole automated writer, enforced by a source-walking test), ISC-82 (webhook books, records, notifies — HMAC + idempotent).
 
