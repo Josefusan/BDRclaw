@@ -13,7 +13,11 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import type http from 'http';
+import path from 'path';
+
+import { STORE_DIR } from './config.js';
 
 const SESSION_COOKIE = 'bdr_session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -24,13 +28,44 @@ export function isAuthEnabled(): boolean {
   return !!process.env.BDR_DASHBOARD_PASSWORD;
 }
 
+let cachedSecret: Buffer | null = null;
+
+/**
+ * Session HMAC key. Precedence (security audit finding 2 — never derive the
+ * signing key from the password, so a leaked password can't mint cookies
+ * offline and a leaked cookie isn't a password-cracking oracle):
+ *   1. BDR_SESSION_SECRET if set (operator-managed, rotates all sessions).
+ *   2. Otherwise a random 32-byte secret persisted to store/session-secret,
+ *      generated once on first boot. Survives restarts; regenerating the file
+ *      (or clearing the volume) logs everyone out.
+ */
 function secret(): Buffer {
   const explicit = process.env.BDR_SESSION_SECRET;
-  const base = explicit ?? `${process.env.BDR_DASHBOARD_PASSWORD}`;
-  return crypto
-    .createHash('sha256')
-    .update(`bdrclaw-session-v1:${base}`)
-    .digest();
+  if (explicit) {
+    return crypto
+      .createHash('sha256')
+      .update(`bdrclaw-session-v1:${explicit}`)
+      .digest();
+  }
+  if (cachedSecret) return cachedSecret;
+  const file = path.join(STORE_DIR, 'session-secret');
+  try {
+    if (fs.existsSync(file)) {
+      cachedSecret = Buffer.from(fs.readFileSync(file, 'utf8').trim(), 'hex');
+      if (cachedSecret.length === 32) return cachedSecret;
+    }
+  } catch {
+    // fall through to regenerate
+  }
+  const generated = crypto.randomBytes(32);
+  try {
+    fs.mkdirSync(STORE_DIR, { recursive: true });
+    fs.writeFileSync(file, generated.toString('hex'), { mode: 0o600 });
+  } catch {
+    // If the store isn't writable, keep the secret in-process for this run.
+  }
+  cachedSecret = generated;
+  return cachedSecret;
 }
 
 function sign(payload: string): string {
@@ -90,9 +125,23 @@ export function isRateLimited(ip: string, now = Date.now()): boolean {
   return entry.count >= MAX_LOGIN_ATTEMPTS;
 }
 
+const MAX_TRACKED_IPS = 10_000;
+
 export function recordFailedAttempt(ip: string, now = Date.now()): void {
   const entry = attempts.get(ip);
   if (!entry || entry.resetAt < now) {
+    // Sweep expired entries on write so a burst of one-shot IPs can't grow the
+    // map without bound (security audit finding 3 — memory-DoS).
+    if (attempts.size >= MAX_TRACKED_IPS) {
+      for (const [key, val] of attempts) {
+        if (val.resetAt < now) attempts.delete(key);
+      }
+      // Still full of live entries → drop the oldest-window entry to stay bounded.
+      if (attempts.size >= MAX_TRACKED_IPS) {
+        const oldest = attempts.keys().next().value;
+        if (oldest !== undefined) attempts.delete(oldest);
+      }
+    }
     attempts.set(ip, { count: 1, resetAt: now + ATTEMPT_WINDOW_MS });
     return;
   }
@@ -151,6 +200,10 @@ const EXEMPT_EXACT = new Set([
   '/privacy',
   '/terms',
   '/favicon.svg',
+  // Signature-verified inbound webhook that lives outside /api/webhooks/
+  // (audit finding 9). It authenticates itself via X-Zm-Signature, so it must
+  // stay reachable without a dashboard session.
+  '/api/zoom/webhook',
 ]);
 
 export function isAuthExempt(pathname: string): boolean {

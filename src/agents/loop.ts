@@ -206,11 +206,29 @@ async function processEnrollment(
   const lastAt = enrollment.last_step_at
     ? new Date(enrollment.last_step_at).getTime()
     : new Date(enrollment.enrolled_at).getTime();
-  const jitterMs = (Math.random() * 2 - 1) * campaign.jitter_minutes * 60_000;
-  const dueAt = lastAt + nextStep.delay_days * 86_400_000 + jitterMs;
+  const dueAt = computeStepDueAt(
+    lastAt,
+    nextStep.delay_days,
+    campaign.jitter_minutes,
+  );
   if (Date.now() < dueAt) return;
 
   await sendStep(campaign, nextStep, enrollment);
+}
+
+/**
+ * Compute the timestamp (ms since epoch) at which a step becomes due, applying
+ * bounded send-time jitter of ±jitterMinutes (ISC-8). Pure function — extracted
+ * verbatim from processEnrollment and exported solely for test observability;
+ * no behavior change.
+ */
+export function computeStepDueAt(
+  lastAtMs: number,
+  delayDays: number,
+  jitterMinutes: number,
+): number {
+  const jitterMs = (Math.random() * 2 - 1) * jitterMinutes * 60_000;
+  return lastAtMs + delayDays * 86_400_000 + jitterMs;
 }
 
 // ── Step send — the core guarded path ────────────────────────────────────────

@@ -290,8 +290,19 @@ export function route(
   const method = req.method ?? 'GET';
   const pathname = url.pathname;
 
-  // CORS for local dev
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS: reflect same-origin only. A wildcard here is a latent footgun if
+  // credentialed CORS is ever added (audit finding 6) — the dashboard is a
+  // same-origin SPA and has no legitimate cross-origin API consumer.
+  const reqOrigin = req.headers.origin;
+  if (reqOrigin) {
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(reqOrigin).host === req.headers.host;
+    } catch {
+      sameOrigin = false;
+    }
+    if (sameOrigin) res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -560,9 +571,11 @@ function handleApi(
     }
 
     if (method === 'GET' && pathname === '/api/health') {
-      // Auth-exempt (Railway health checks). Operational detail — uptime,
-      // loop state — is only for authenticated callers; the public body is a
-      // bare ok so the endpoint leaks nothing.
+      // Auth-exempt (Railway health checks). When auth is enabled, operational
+      // detail — uptime, loop state — is only for authenticated callers; the
+      // public body is a bare ok so the endpoint leaks nothing to the unauthed
+      // health-check caller. When auth is disabled (localhost-only dev), the
+      // SPA reads loop state from here, so the full body is returned.
       if (isAuthEnabled() && !hasValidSession(req)) {
         json(res, { status: 'ok' });
         return;
@@ -584,7 +597,23 @@ function handleApi(
       readBody(req, (body) => {
         try {
           const signingKey = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
-          if (signingKey) {
+          // Fail CLOSED (security audit finding 1): the webhook can write
+          // `meeting_booked`, push to CRMs, and fire notifications, and it is
+          // auth-exempt. On a deploy (BDR_DASHBOARD_PASSWORD set) it MUST be
+          // signed — an unsigned booking is an unauthenticated pipeline-injection
+          // vector. Local dev without auth may run it unsigned.
+          if (!signingKey) {
+            if (isAuthEnabled()) {
+              logger.error(
+                'Calendly webhook refused: CALENDLY_WEBHOOK_SIGNING_KEY is not set on a deployed instance',
+              );
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({ error: 'Webhook signing not configured' }),
+              );
+              return;
+            }
+          } else {
             const sigHeader = String(
               req.headers['calendly-webhook-signature'] ?? '',
             );
@@ -596,7 +625,13 @@ function handleApi(
                   .update(`${t}.${body}`)
                   .digest('hex')
               : null;
-            if (!v1 || !expected || v1 !== expected) {
+            // Constant-time compare (audit finding 5) — equal-length hex only.
+            const ok =
+              !!v1 &&
+              !!expected &&
+              v1.length === expected.length &&
+              crypto.timingSafeEqual(Buffer.from(v1), Buffer.from(expected));
+            if (!ok) {
               logger.warn('Calendly webhook signature rejected');
               res.writeHead(401);
               res.end(JSON.stringify({ error: 'Invalid signature' }));

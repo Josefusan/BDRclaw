@@ -142,12 +142,17 @@ describe('public exemptions (ISC-87)', () => {
     expect((await fetch(`${base}/api/health`)).status).toBe(200);
     expect((await fetch(`${base}/privacy`)).status).toBe(200);
     expect((await fetch(`${base}/terms`)).status).toBe(200);
+    // The webhook is auth-exempt: it reaches its handler without a session (so
+    // it is never 401/302 from the auth gate). With auth enabled and no signing
+    // key it fails CLOSED with 503 (see the fail-closed security fix), proving
+    // the request got past the gate to the handler.
     const webhook = await fetch(`${base}/api/webhooks/calendly`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event: 'invitee.canceled', payload: {} }),
     });
-    expect(webhook.status).toBe(200);
+    expect(webhook.status).toBe(503);
+    expect([401, 302]).not.toContain(webhook.status);
     const login200 = await fetch(`${base}/login`);
     expect(login200.status).toBe(200);
     expect(await login200.text()).toContain('Sign in to BDRclaw');
