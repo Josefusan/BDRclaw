@@ -74,7 +74,11 @@ const attempts = new Map<string, { count: number; resetAt: number }>();
 export function clientIp(req: http.IncomingMessage): string {
   const fwd = req.headers['x-forwarded-for'];
   if (typeof fwd === 'string' && fwd.length > 0) {
-    return fwd.split(',')[0].trim();
+    // LAST entry: appended by the proxy we actually sit behind (Railway edge).
+    // Earlier entries are client-supplied and spoofable — trusting the first
+    // would let an attacker rotate fake IPs past the login rate limit.
+    const parts = fwd.split(',');
+    return parts[parts.length - 1].trim();
   }
   return req.socket.remoteAddress ?? 'unknown';
 }

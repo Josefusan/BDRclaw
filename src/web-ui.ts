@@ -560,6 +560,13 @@ function handleApi(
     }
 
     if (method === 'GET' && pathname === '/api/health') {
+      // Auth-exempt (Railway health checks). Operational detail — uptime,
+      // loop state — is only for authenticated callers; the public body is a
+      // bare ok so the endpoint leaks nothing.
+      if (isAuthEnabled() && !hasValidSession(req)) {
+        json(res, { status: 'ok' });
+        return;
+      }
       json(res, {
         status: 'ok',
         uptime: process.uptime(),

@@ -19,7 +19,12 @@
 // at import time. See load-env.ts.
 import './load-env.js';
 
+import fs from 'fs';
+import path from 'path';
+
 import { initBDRDatabase } from './bdr-db.js';
+import { STORE_DIR } from './config.js';
+import { logger } from './logger.js';
 
 // Side-effect imports: register BDR action handlers with the brain.
 // gmail    → send_email, classify_reply, send_meeting_link
@@ -51,6 +56,35 @@ let initialized = false;
  */
 export function initCore(): void {
   if (initialized) return;
+  seedGmailTokensFromEnv();
   initBDRDatabase();
   initialized = true;
+}
+
+/**
+ * Deployment token seeding (ISC-91 companion): a fresh Railway volume has no
+ * Gmail OAuth tokens. GMAIL_TOKEN_<N>_B64 env vars (base64 of the local
+ * store/gmail-tokens/account-<N>.json) hydrate the volume on first boot.
+ * Existing files always win — a redeploy never clobbers refreshed tokens.
+ */
+function seedGmailTokensFromEnv(): void {
+  const tokensDir = path.join(STORE_DIR, 'gmail-tokens');
+  for (const [key, value] of Object.entries(process.env)) {
+    const m = /^GMAIL_TOKEN_(\d+)_B64$/.exec(key);
+    if (!m || !value) continue;
+    const target = path.join(tokensDir, `account-${m[1]}.json`);
+    if (fs.existsSync(target)) continue;
+    try {
+      const decoded = Buffer.from(value, 'base64').toString('utf8');
+      JSON.parse(decoded); // must be valid JSON before it lands on disk
+      fs.mkdirSync(tokensDir, { recursive: true });
+      fs.writeFileSync(target, decoded, { mode: 0o600 });
+      logger.info({ account: m[1] }, 'Gmail token seeded from env');
+    } catch (err) {
+      logger.warn(
+        { account: m[1], err },
+        'GMAIL_TOKEN_*_B64 present but invalid — skipped',
+      );
+    }
+  }
 }
