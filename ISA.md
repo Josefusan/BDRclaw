@@ -1,6 +1,6 @@
 # ISA — BDRclaw v1.0 (Ship)
 
-> **Tier:** E4 | **Status:** EXECUTE (2026-07-16; auth shipped, deploy staged — blocked only on `railway login`; open: ISC-74 unbuilt, ISC-93/94/95 known bugs) | **Updated:** 2026-07-16T18:20:00Z | **Iteration:** v1.5 — dashboard auth + Railway deploy prep + war-room test/security sweep (ISC-85..92) — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
+> **Tier:** E4 | **Status:** LIVE (2026-07-16 — deployed to Railway at bdrclaw-production.up.railway.app, auth-gated, email verified; open: ISC-74 unbuilt, ISC-93/94/95 known bugs, Calendly webhook subscription) | **Updated:** 2026-07-16T19:15:00Z | **Iteration:** v1.5 — dashboard auth + Railway deploy + war-room test/security sweep — Landing page, dashboard completion, GHL, war-room loop (ISC-61..76) — Dashboard v2, runtime hardening, channel completion (ISC-42..60)
 
 ---
 
@@ -180,8 +180,8 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] ISC-87: Anti: `/api/webhooks/*`, `/unsubscribe`, `/privacy`, `/terms`, and `/api/health` remain reachable WITHOUT auth — Calendly, Twilio, mail providers, and Railway health checks cannot log in. *(test + live smoke: health 200, webhook 200 with auth on.)*
 - [x] ISC-88: Anti: with `BDR_DASHBOARD_PASSWORD` unset, behavior is unchanged — the full pre-auth test suite passes unmodified. *(345/345 incl. all pre-auth tests; /login 302→/ when disabled.)*
 - [x] ISC-89: The session cookie is HMAC-signed with an expiry; a tampered or expired token is rejected (unit test). *(tampered MAC, tampered expiry, expired, garbage all rejected; timing-safe compares.)*
-- [ ] ISC-90: The deployed Railway service answers `GET /api/health` 200 on its public URL and serves `/login` (not the dashboard) to an unauthenticated browser. *(blocked on `railway login` — Joseph.)*
-- [ ] ISC-91: SQLite + `store/` live on a Railway volume mounted at `/app/store` — data survives a redeploy. *(blocked on `railway login` — Joseph.)*
+- [x] ISC-90: The deployed Railway service answers `GET /api/health` 200 on its public URL and serves `/login` (not the dashboard) to an unauthenticated browser. *(2026-07-16 LIVE: https://bdrclaw-production.up.railway.app — health 200 (bare body, auth on), `/` → 302 /login, /api/stats → 401, login with password → 200+cookie → /api/stats 200.)*
+- [x] ISC-91: SQLite + `store/` live on a Railway volume mounted at `/app/store` — data survives a redeploy. *(2026-07-16 LIVE: volume "bdrclaw-volume" mounted at /app/store; the Gmail OAuth token seeded from GMAIL_TOKEN_1_B64 landed on the volume and email shows configured+verified — proving write+read on the persistent mount, which survived across the failed→successful redeploy.)*
 - [x] ISC-92: The web server honors Railway's injected `PORT` env (falls back to `BDR_WEB_PORT`, then 3000). *(web-ui.ts:124-127.)*
 
 ### Known Product Bugs — found by war-room agents 2026-07-16 (not deploy blockers)
