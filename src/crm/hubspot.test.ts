@@ -62,9 +62,7 @@ interface RecordedRequest {
   body?: unknown;
 }
 
-type MockReply =
-  | { status: number; body: unknown }
-  | { networkError: Error };
+type MockReply = { status: number; body: unknown } | { networkError: Error };
 
 const replies: MockReply[] = [];
 const recorded: RecordedRequest[] = [];
@@ -346,9 +344,7 @@ describe('hubspot adapter with env absent (ISC-28)', () => {
     expect(adapter).toBeUndefined();
 
     const { getCRMAdapters } = await import('./registry.js');
-    expect(
-      getCRMAdapters().some((a) => a.name === 'hubspot'),
-    ).toBe(false);
+    expect(getCRMAdapters().some((a) => a.name === 'hubspot')).toBe(false);
     expect(httpsRequestMock).not.toHaveBeenCalled();
   });
 });

@@ -234,7 +234,10 @@ describe('agentic loop lifecycle — ISC-1/2/3/4/8/24', () => {
     expect(new Set(tickIds).size).toBe(2);
     for (const [fields] of heartbeats) {
       expect(fields).toEqual(
-        expect.objectContaining({ tickId: expect.any(String), ts: expect.any(String) }),
+        expect.objectContaining({
+          tickId: expect.any(String),
+          ts: expect.any(String),
+        }),
       );
     }
   });
