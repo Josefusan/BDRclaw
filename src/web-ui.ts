@@ -68,6 +68,19 @@ import {
   stopAgenticLoop,
 } from './agents/loop.js';
 import { fireHotLeadNotification } from './agents/reply-handler.js';
+import {
+  checkPassword,
+  clearAttempts,
+  clientIp,
+  createSessionToken,
+  hasValidSession,
+  isAuthEnabled,
+  isAuthExempt,
+  isRateLimited,
+  recordFailedAttempt,
+  renderLoginPage,
+  sessionCookieHeader,
+} from './dashboard-auth.js';
 import { getCRMAdapters, pullFromCRMs } from './crm/registry.js';
 import { logger } from './logger.js';
 import { getWebhookHandler } from './webhook-registry.js';
@@ -121,7 +134,11 @@ import {
   getOtterTranscripts,
 } from './integrations/otter.js';
 
-const WEB_PORT = parseInt(process.env.BDR_WEB_PORT ?? '3000', 10);
+// Railway injects PORT; BDR_WEB_PORT is the self-hosted override (ISC-92).
+const WEB_PORT = parseInt(
+  process.env.PORT ?? process.env.BDR_WEB_PORT ?? '3000',
+  10,
+);
 const WEB_HOST = process.env.BDR_WEB_HOST ?? '127.0.0.1';
 
 // ── Channel configuration status ──────────────────────────────────────────────
@@ -304,6 +321,77 @@ export function route(
         return;
       }
     }
+  }
+
+  // ── Auth gate (ISC-85..88) ──────────────────────────────────────────────────
+  // Active only when BDR_DASHBOARD_PASSWORD is set. Webhooks, compliance pages,
+  // and the health check stay public (their callers cannot log in).
+
+  if (method === 'GET' && pathname === '/login') {
+    if (!isAuthEnabled() || hasValidSession(req)) {
+      res.writeHead(302, { Location: '/' });
+      res.end();
+      return;
+    }
+    sendHtml(res, 200, renderLoginPage());
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/login') {
+    if (!isAuthEnabled()) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Auth is not enabled' }));
+      return;
+    }
+    const ip = clientIp(req);
+    if (isRateLimited(ip)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Too many attempts' }));
+      return;
+    }
+    readBody(req, (body) => {
+      let password: unknown;
+      try {
+        password = (JSON.parse(body) as { password?: unknown }).password;
+      } catch {
+        password = undefined;
+      }
+      if (!checkPassword(password)) {
+        recordFailedAttempt(ip);
+        logger.warn({ ip }, 'Dashboard login failed');
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Wrong password' }));
+        return;
+      }
+      clearAttempts(ip);
+      logger.info({ ip }, 'Dashboard login succeeded');
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': sessionCookieHeader(req, createSessionToken()),
+      });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/logout') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': sessionCookieHeader(req, null),
+    });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (isAuthEnabled() && !isAuthExempt(pathname) && !hasValidSession(req)) {
+    if (pathname.startsWith('/api/')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required' }));
+    } else {
+      res.writeHead(302, { Location: '/login' });
+      res.end();
+    }
+    return;
   }
 
   // Public compliance pages (CAN-SPAM opt-out). Handled before static files so

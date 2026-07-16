@@ -113,6 +113,7 @@
           <a href="/privacy" class="hover:text-zinc-400 transition-colors">Privacy</a>
           <a href="/terms" class="hover:text-zinc-400 transition-colors">Terms</a>
           <a href="/unsubscribe" class="hover:text-zinc-400 transition-colors">Unsubscribe</a>
+          <a href="#" @click.prevent="fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login')" class="hover:text-zinc-400 transition-colors">Sign out</a>
         </div>
       </div>
     </nav>

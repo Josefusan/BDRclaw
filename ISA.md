@@ -174,6 +174,16 @@ BDRclaw v1 ships to `bdrclaw.dev` as a working SaaS: one person configures their
 - [x] ISC-83: Anti: booking-detection changes land with the full suite green and typecheck 0 — no regression to the 328-test baseline. *(337/337, typecheck exit 0.)*
 - [x] ISC-84: The dashboard funnel, stage pills, and stats render the new `meeting_link_sent` stage without falling into an unknown-stage code path. *(real-Chrome screenshot: funnel row "Link sent" between Interested and Meeting booked; PATCH enum lists it.)*
 
+### Dashboard Auth + Railway Deploy (added 2026-07-16)
+- [ ] ISC-85: With `BDR_DASHBOARD_PASSWORD` set, every dashboard page and `/api/*` route requires a valid session — unauthenticated page GETs 302 to `/login`, unauthenticated API calls get 401 JSON.
+- [ ] ISC-86: `POST /api/login` with the correct password sets an HttpOnly `bdr_session` cookie and grants access; a wrong password returns 401; more than 5 failures per IP per 15 minutes returns 429.
+- [ ] ISC-87: Anti: `/api/webhooks/*`, `/unsubscribe`, `/privacy`, `/terms`, and `/api/health` remain reachable WITHOUT auth — Calendly, Twilio, mail providers, and Railway health checks cannot log in.
+- [ ] ISC-88: Anti: with `BDR_DASHBOARD_PASSWORD` unset, behavior is unchanged — the full pre-auth test suite passes unmodified.
+- [ ] ISC-89: The session cookie is HMAC-signed with an expiry; a tampered or expired token is rejected (unit test).
+- [ ] ISC-90: The deployed Railway service answers `GET /api/health` 200 on its public URL and serves `/login` (not the dashboard) to an unauthenticated browser.
+- [ ] ISC-91: SQLite + `store/` live on a Railway volume mounted at `/app/store` — data survives a redeploy.
+- [ ] ISC-92: The web server honors Railway's injected `PORT` env (falls back to `BDR_WEB_PORT`, then 3000).
+
 ### War Room Operations (added 2026-07-15)
 - [ ] ISC-74: A perpetual war-room loop is scheduled and documented: each iteration integrates agent output, runs the full suite, live-verifies, pushes, updates ISA/handoff, and re-arms — stopping only when all remaining work is blocked on Joseph. *(2026-07-15 resume: UNBUILT — this is a scope gap, not an environment blocker; no loop artifact exists in docs/, scripts/, or launchd/. Surfaced to Joseph: confirm whether this is still wanted before building.)*
 - [ ] ISC-76: Anti: the loop never marks an ISC passed without tool evidence, and never re-litigates decisions recorded in `## Decisions`.

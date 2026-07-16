@@ -305,6 +305,11 @@ function app() {
     /* fetch helper — throws on !ok so callers can degrade */
     async api(path, opts) {
       const res = await fetch(path, opts);
+      if (res.status === 401) {
+        // Session expired or missing — the server gates everything behind /login.
+        location.href = '/login';
+        throw new Error('Authentication required');
+      }
       if (!res.ok) {
         let msg = 'HTTP ' + res.status;
         try { const body = await res.json(); if (body && body.error) msg = body.error; } catch (e) { /* ignore */ }
