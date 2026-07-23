@@ -13,6 +13,7 @@
     "brain": "tsx src/brain-cli.ts",
     "gmail-auth": "tsx setup/gmail-auth.ts",
     "linkedin-auth": "tsx setup/linkedin-auth.ts",
+    "linkedin-verify": "tsx setup/linkedin-verify.ts",
     "twitter-auth": "tsx setup/twitter-auth.ts",
     "import-csv": "tsx setup/import-csv.ts",
     "typecheck": "tsc --noEmit",
