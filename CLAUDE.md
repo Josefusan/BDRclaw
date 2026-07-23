@@ -87,3 +87,17 @@ systemctl --user start bdrclaw
 systemctl --user stop bdrclaw
 systemctl --user restart bdrclaw
 ```
+
+## Documentation System
+
+Before starting any task, read these files in order:
+1. `docs/claude/TECH_STACK.md` — full architecture reference (frontend, backend, external services, pipelines, key files)
+2. `docs/claude/PARITY_CHECKLIST.md` — surfaces to verify for every feature (7 channels + dashboard + CRM sync)
+3. `docs/claude/INVESTIGATIONS.md` — historical findings (never repeat a solved investigation)
+
+For data/processing-pipeline work also read `docs/claude/DOWNLOAD_FLOWS.md`; for anything touching tests read `docs/claude/TESTING_PROTOCOL.md`.
+
+Before ending any session, run the closeout routine:
+- `docs/claude/SESSION_CLOSEOUT.md` — mandatory end-of-session checklist
+
+Always run SESSION_CLOSEOUT before your final commit.
