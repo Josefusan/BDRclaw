@@ -8,6 +8,25 @@ establish the format and preserve hard-won lessons. Do not repeat these investig
 
 ---
 
+## 2026-07-24 — Two claimed "P0" send bugs verified FALSE (do not re-chase)
+
+**Context:** a go-live handoff carried forward two candidate P0 bugs. Both were checked against
+source before assigning agent work; both are non-issues.
+**Finding 1 — "`send_meeting_link` bypasses the daily send cap":** FALSE. The handler
+(`src/gmail-bdr-actions.ts:232`) sends via `channel.sendBDREmail`, which itself enforces
+`assertNotSuppressed('email', opts.to)` (`src/channels/gmail.ts:136`) and the daily cap
+`msgsSentToday >= DAILY_MSG_LIMIT` (`gmail.ts:140`). No bypass.
+**Finding 2 — "interested inbound reply is dropped":** FALSE. `routeInboundToReplyHandler`
+(`src/index.ts:601`) routes every real inbound prospect message to `processReply`, wired into the
+shared `onMessage` callback at `src/index.ts:652` ("Break A fix").
+**Real residue:** the ONLY verified gap nearby is defense-in-depth parity — `telegram.ts` and
+`instagram.ts` don't import the `assertNotSuppressed` backstop the other 5 channels do. Not a
+live escape (both send entry points guard suppression upstream), so it's P2 hardening, not a bug.
+**Lesson:** a claimed bug inherited across a compaction is a hypothesis, not a fact. Grep the
+enforcement site before spending agent-hours. Two phantom P0s cost ~5 greps to disprove.
+
+---
+
 ## 2026-07-15 — Booking metric counted intentions, not bookings
 
 **Symptom:** `meeting_booked` (the flagship funnel metric) incremented the moment a calendar link
